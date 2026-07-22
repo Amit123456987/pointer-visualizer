@@ -12,12 +12,12 @@ const SOUND_FREQ = {
   decl: 698,
 };
 
-/** 0–1 linear gain multiplier; default 0.7 */
-let soundVolume = 0.7;
+/** 0–1 linear gain multiplier; default full */
+let soundVolume = 1;
 
 function clampVolume(v) {
   const n = Number(v);
-  if (!Number.isFinite(n)) return 0.7;
+  if (!Number.isFinite(n)) return 1;
   return Math.min(1, Math.max(0, n));
 }
 
@@ -77,13 +77,13 @@ function playUpdateSound(kind) {
   osc.type = "sine";
   osc.frequency.setValueAtTime(freq, t);
   gain.gain.setValueAtTime(0, t);
-  gain.gain.linearRampToValueAtTime(0.07, t + 0.008);
-  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.075);
+  gain.gain.linearRampToValueAtTime(0.32, t + 0.008);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
 
   osc.connect(gain);
   gain.connect(masterGain || audioCtx.destination);
   osc.start(t);
-  osc.stop(t + 0.08);
+  osc.stop(t + 0.1);
 }
 
 /** Soft rising whoosh — distinct from the short update beep */
@@ -93,27 +93,35 @@ function playPointerSlideSound() {
 
   const t = audioCtx.currentTime;
   const osc = audioCtx.createOscillator();
+  const osc2 = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
   const filter = audioCtx.createBiquadFilter();
 
   osc.type = "triangle";
-  osc.frequency.setValueAtTime(320, t);
-  osc.frequency.exponentialRampToValueAtTime(720, t + 0.14);
+  osc.frequency.setValueAtTime(280, t);
+  osc.frequency.exponentialRampToValueAtTime(640, t + 0.16);
+
+  osc2.type = "sine";
+  osc2.frequency.setValueAtTime(420, t);
+  osc2.frequency.exponentialRampToValueAtTime(880, t + 0.16);
 
   filter.type = "lowpass";
-  filter.frequency.setValueAtTime(900, t);
-  filter.frequency.exponentialRampToValueAtTime(2400, t + 0.12);
-  filter.Q.value = 0.7;
+  filter.frequency.setValueAtTime(1200, t);
+  filter.frequency.exponentialRampToValueAtTime(3200, t + 0.14);
+  filter.Q.value = 0.6;
 
   gain.gain.setValueAtTime(0, t);
-  gain.gain.linearRampToValueAtTime(0.055, t + 0.02);
-  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+  gain.gain.linearRampToValueAtTime(0.28, t + 0.018);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
 
   osc.connect(filter);
+  osc2.connect(filter);
   filter.connect(gain);
   gain.connect(masterGain || audioCtx.destination);
   osc.start(t);
-  osc.stop(t + 0.2);
+  osc2.start(t);
+  osc.stop(t + 0.24);
+  osc2.stop(t + 0.24);
 }
 
 loadSoundVolume();

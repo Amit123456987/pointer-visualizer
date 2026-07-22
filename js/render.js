@@ -76,16 +76,18 @@ function renderVarRow(name, val, frameName) {
           typeof arrayIteratorsFor === "function"
             ? arrayIteratorsFor(name, val.items.length).filter((m) => m.index === i)
             : [];
-        const hot =
-          (lastArrayWrite &&
-            lastArrayWrite.name === name &&
-            lastArrayWrite.index === i &&
-            lastArrayWrite.frame === frameName) ||
-          markers.length > 0;
+        const isWrite =
+          lastArrayWrite &&
+          lastArrayWrite.name === name &&
+          lastArrayWrite.index === i &&
+          lastArrayWrite.frame === frameName;
         const title = markers.length ? markers.map((m) => m.varName).join(", ") : "";
+        let cellCls = "inline-array-cell";
+        if (isWrite) cellCls += " updated";
+        else if (markers.length) cellCls += " hot";
         return (
-          '<span class="inline-array-cell' +
-          (hot ? " hot" : "") +
+          '<span class="' +
+          cellCls +
           '"' +
           (title ? ' title="' + escapeXml(title) + '"' : "") +
           ">" +

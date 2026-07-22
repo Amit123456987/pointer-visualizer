@@ -719,6 +719,19 @@
       border-radius: var(--radius-sm);
       z-index: 2;
     }
+    .overlay-slot .badge.write-badge {
+      color: var(--on-accent);
+      background: var(--pointer);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-size: 0.58rem;
+      animation: badgePop 0.55s cubic-bezier(0.34, 1.4, 0.64, 1) both,
+                 badgeGlow 1.2s ease-out 0.2s both;
+    }
+    .overlay-slot .badge.write-badge::after {
+      border-top-color: var(--pointer);
+    }
     .overlay-slot .badge.ptr-sliding,
     .structure-badge.ptr-sliding,
     .ptr-marker.ptr-sliding {
@@ -817,6 +830,7 @@
       flex-shrink: 0;
     }
     .structure-cell {
+      position: relative;
       border: 1px solid var(--stroke);
       background: var(--surface);
       border-radius: var(--radius-sm);
@@ -826,17 +840,34 @@
       font-weight: 500;
       transition: background 0.15s var(--ease), border-color 0.15s var(--ease), box-shadow 0.15s var(--ease), transform 0.15s var(--ease);
     }
-    .structure-slot.updated .structure-cell {
-      border-color: var(--pointer);
-      color: var(--text);
-      animation: cellUpdateFlash 0.7s var(--ease) both;
-    }
     .structure-slot.active .structure-cell {
       border-color: var(--iter);
       background: rgba(244, 143, 177, 0.12);
       color: var(--text);
       transform: none;
       box-shadow: none;
+    }
+    .structure-slot.updated .structure-cell {
+      border-color: var(--pointer);
+      color: var(--text);
+      animation: cellUpdateFlash 0.75s var(--ease) both;
+    }
+    .structure-slot.updated.active .structure-cell {
+      border-color: var(--pointer);
+      animation: cellUpdateFlash 0.75s var(--ease) both;
+    }
+    .structure-slot.updated {
+      animation: slotUpdateLift 0.75s var(--ease) both;
+      z-index: 3;
+    }
+    .structure-slot.updated .structure-cell::after {
+      content: "";
+      position: absolute;
+      inset: -3px;
+      border-radius: calc(var(--radius-sm) + 2px);
+      border: 2px solid rgba(255, 183, 77, 0.65);
+      pointer-events: none;
+      animation: cellUpdateRing 0.75s var(--ease) both;
     }
     .structure-idx {
       display: block;
@@ -915,38 +946,72 @@
     }
     .inline-array-cell {
       display: inline-block;
+      position: relative;
       min-width: 1.5rem;
       text-align: center;
       padding: 0.1rem 0.3rem;
       border-radius: var(--radius-sm);
+      border: 1px solid transparent;
       background: rgba(128, 203, 196, 0.1);
       font-size: 0.6875rem;
       transition: background 0.15s var(--ease), color 0.15s var(--ease), box-shadow 0.15s var(--ease), transform 0.15s var(--ease);
     }
     .inline-array-cell.hot {
+      background: rgba(244, 143, 177, 0.16);
       color: var(--text);
       font-weight: 500;
-      animation: cellUpdateFlash 0.7s var(--ease) both;
+    }
+    .inline-array-cell.updated {
+      color: var(--text);
+      font-weight: 600;
+      animation: cellUpdateFlash 0.75s var(--ease) both;
+    }
+    .overlay-slot.updated .cell,
+    .overlay-slot.updated.active .cell {
+      border-color: var(--pointer);
+      color: var(--text);
+      animation: cellUpdateFlash 0.75s var(--ease) both;
+    }
+    .overlay-slot.updated {
+      animation: slotUpdateLift 0.75s var(--ease) both;
+      z-index: 3;
+    }
+    .array-card.has-write {
+      animation: arrayCardPulse 0.75s var(--ease) both;
     }
     @keyframes cellUpdateFlash {
       0% {
-        background: rgba(255, 183, 77, 0.55);
+        background: rgba(255, 183, 77, 0.7);
         border-color: #ffcc80;
-        box-shadow: 0 0 0 0 rgba(255, 183, 77, 0.55), 0 0 18px rgba(255, 183, 77, 0.35);
-        transform: scale(1.12);
+        box-shadow: 0 0 0 0 rgba(255, 183, 77, 0.6), 0 0 22px rgba(255, 183, 77, 0.45);
+        transform: scale(1.18);
       }
-      45% {
-        background: rgba(255, 183, 77, 0.28);
+      40% {
+        background: rgba(255, 183, 77, 0.35);
         border-color: var(--pointer);
-        box-shadow: 0 0 0 4px rgba(255, 183, 77, 0.18), 0 0 12px rgba(255, 183, 77, 0.22);
-        transform: scale(1.04);
+        box-shadow: 0 0 0 5px rgba(255, 183, 77, 0.22), 0 0 14px rgba(255, 183, 77, 0.28);
+        transform: scale(1.06);
       }
       100% {
-        background: rgba(255, 183, 77, 0.14);
+        background: rgba(255, 183, 77, 0.16);
         border-color: var(--pointer);
-        box-shadow: 0 0 0 0 rgba(255, 183, 77, 0), 0 0 6px rgba(255, 183, 77, 0.12);
+        box-shadow: 0 0 0 0 rgba(255, 183, 77, 0), 0 0 8px rgba(255, 183, 77, 0.14);
         transform: scale(1);
       }
+    }
+    @keyframes cellUpdateRing {
+      0% { opacity: 1; transform: scale(0.92); }
+      100% { opacity: 0; transform: scale(1.2); }
+    }
+    @keyframes slotUpdateLift {
+      0% { transform: translateY(0); }
+      35% { transform: translateY(-4px); }
+      100% { transform: translateY(0); }
+    }
+    @keyframes arrayCardPulse {
+      0% { box-shadow: 0 0 0 0 rgba(255, 183, 77, 0.35); }
+      40% { box-shadow: 0 0 0 4px rgba(255, 183, 77, 0.18); }
+      100% { box-shadow: none; }
     }
     @keyframes badgePop {
       0% {
@@ -987,13 +1052,21 @@
     }
     @media (prefers-reduced-motion: reduce) {
       .structure-slot.updated .structure-cell,
-      .inline-array-cell.hot,
+      .structure-slot.updated.active .structure-cell,
+      .structure-slot.updated,
+      .structure-slot.updated .structure-cell::after,
+      .inline-array-cell.updated,
+      .overlay-slot.updated,
+      .overlay-slot.updated .cell,
+      .array-card.has-write,
       .structure-badge.write,
       .structure-badges .structure-badge.write {
         animation: none;
       }
       .structure-slot.updated .structure-cell,
-      .inline-array-cell.hot {
+      .structure-slot.updated.active .structure-cell,
+      .inline-array-cell.updated,
+      .overlay-slot.updated .cell {
         background: rgba(255, 183, 77, 0.14);
         border-color: var(--pointer);
         box-shadow: none;

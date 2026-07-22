@@ -366,6 +366,7 @@ function renderLiveStructures() {
     '<p class="structures-hint">Updates on every step — highlighted cells were just written</p>';
 
   for (const arr of arrays) {
+    let hasWrite = false;
     const slots = arr.items.map((it, i) => {
       const markers = arrayIteratorsFor(arr.name, arr.items.length).filter((m) => m.index === i);
       const isWrite =
@@ -373,6 +374,7 @@ function renderLiveStructures() {
         lastArrayWrite.name === arr.name &&
         lastArrayWrite.index === i &&
         lastArrayWrite.frame === arr.frame;
+      if (isWrite) hasWrite = true;
       let cls = "structure-slot";
       if (isWrite) cls += " updated";
       if (markers.length) cls += " active";
@@ -390,7 +392,7 @@ function renderLiveStructures() {
     });
 
     html +=
-      '<div class="structure-card array-card">' +
+      '<div class="structure-card array-card' + (hasWrite ? " has-write" : "") + '">' +
       '<div class="structure-head"><span class="structure-name">' + escapeXml(arr.label) + "</span>" +
       '<span class="structure-meta">' + arr.items.length + " cells</span></div>" +
       '<div class="structure-track array-track">' + slots.join("") + "</div></div>";
@@ -489,9 +491,17 @@ function renderIterationOverlay() {
           ? [iterationInfo]
           : [];
     const active = markers.length > 0;
+    const isWrite =
+      kind === "array" &&
+      lastArrayWrite &&
+      iterationInfo.source &&
+      lastArrayWrite.name === iterationInfo.source &&
+      lastArrayWrite.index === i;
     let badge = "";
     let srcTag = "";
-    if (markers.length) {
+    if (isWrite) {
+      badge = '<span class="badge write-badge">updated</span>';
+    } else if (markers.length) {
       badge = markers
         .map(
           (m) =>
@@ -507,7 +517,10 @@ function renderIterationOverlay() {
       srcTag = '<span class="src-tag">' + escapeXml(iterationInfo.source) + "</span>";
     }
     return (
-      '<div class="overlay-slot' + (active ? " active" : "") + '">' +
+      '<div class="overlay-slot' +
+      (active ? " active" : "") +
+      (isWrite ? " updated" : "") +
+      '">' +
       srcTag +
       badge +
       '<div class="cell">' + escapeXml(it.display) + "</div>" +
