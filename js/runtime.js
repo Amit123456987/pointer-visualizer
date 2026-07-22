@@ -97,18 +97,25 @@ function getVar(name) {
   return loc.frame.locals.get(name);
 }
 
+function notifyValueUpdate(kind) {
+  if (typeof playUpdateSound === "function") playUpdateSound(kind || "var");
+}
+
 function setVar(name, val) {
   const loc = lookupVar(name);
   if (!loc) {
     currentFrame().locals.set(name, val);
+    notifyValueUpdate("var");
     return;
   }
   if (loc.global) globals.set(name, val);
   else loc.frame.locals.set(name, val);
+  notifyValueUpdate("var");
 }
 
 function declVar(name, val) {
   currentFrame().locals.set(name, val);
+  notifyValueUpdate("decl");
 }
 
 function defaultFields(structName) {
@@ -176,10 +183,12 @@ function writeLValue(lv, val) {
   if (lv.kind === "var") {
     if (lv.loc.global) globals.set(lv.name, val);
     else lv.loc.frame.locals.set(lv.name, val);
+    notifyValueUpdate("var");
     return;
   }
   if (lv.kind === "field") {
     heap.get(lv.objId).fields[lv.field] = val;
+    notifyValueUpdate("field");
     return;
   }
   if (lv.kind === "index") {
@@ -190,6 +199,7 @@ function writeLValue(lv, val) {
         loc && loc.global ? "<global>" : currentFrame() ? currentFrame().name : "";
       lastArrayWrite = { name: lv.arrName, index: lv.index, frame };
     }
+    notifyValueUpdate("array");
   }
 }
 

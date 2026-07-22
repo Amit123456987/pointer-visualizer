@@ -280,6 +280,7 @@ programNameInput.addEventListener("keydown", (e) => {
 programTitleInput.addEventListener("input", updateEditorChrome);
 
 function startFromEditor() {
+  if (typeof initSounds === "function") initSounds();
   prepareProgram(codeEl.value);
 }
 
@@ -309,6 +310,7 @@ document.getElementById("btnRun").addEventListener("click", () => {
 
 document.getElementById("btnStep").addEventListener("click", () => {
   try {
+    if (typeof initSounds === "function") initSounds();
     if (!window.__cppProgram || stepIndex >= ipQueue.length) startFromEditor();
     const r = stepOnce();
     handleResult(r);
