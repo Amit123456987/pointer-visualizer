@@ -1,0 +1,458 @@
+/* ========== RENDER ========== */
+function escapeXml(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+function renderCodeHighlight() {
+  const view = document.getElementById("codeView");
+  if (!view || !codeEl) return;
+  const lines = codeEl.value.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  const names =
+    typeof collectHighlightNames === "function"
+      ? collectHighlightNames(codeEl.value)
+      : { vars: new Set(), types: new Set() };
+  view.innerHTML = lines
+    .map((text, i) => {
+      const n = i + 1;
+      const isErr = errorLine && errorLine === n;
+      const isActive = !isErr && currentLine === n;
+      let cls = "code-line";
+      if (isErr) cls += " error";
+      else if (isActive) cls += " active";
+      const highlighted =
+        typeof highlightLineHtml === "function" ? highlightLineHtml(text, names) : escapeXml(text) || " ";
+      return (
+        '<div class="' +
+        cls +
+        '" data-line="' +
+        n +
+        '"><span class="ln">' +
+        n +
+        '</span><span class="tx">' +
+        highlighted +
+        "</span></div>"
+      );
+    })
+    .join("");
+  const focusEl = view.querySelector(".code-line.error") || view.querySelector(".code-line.active");
+  if (focusEl && typeof focusEl.scrollIntoView === "function") {
+    focusEl.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+  syncEditorScroll();
+}
+
+function syncEditorScroll(fromTextarea) {
+  const view = document.getElementById("codeView");
+  if (!view || !codeEl) return;
+  if (fromTextarea !== false) {
+    view.scrollTop = codeEl.scrollTop;
+    view.scrollLeft = codeEl.scrollLeft;
+  }
+}
+
+function renderVarRow(name, val, frameName) {
+  const isIter = iterationInfo && name === iterationInfo.varName;
+  const isSrc = iterationInfo && name === iterationInfo.source;
+  const isElem = iterationInfo && iterationInfo.elementVar && name === iterationInfo.elementVar;
+  const isArr = val.k === "arr";
+  let cls = "var-row";
+  if (isIter || isElem) cls += " highlight";
+  else if (isSrc) cls += " source-hl";
+  else if (isArr) cls += " array-row";
+  const kind = val.k === "ptr" ? "pointer" : val.k === "arr" ? "array" : val.k === "null" ? "null" : "value";
+  let role = kind;
+  if (isIter) role = "iterates";
+  else if (isSrc) role = "over";
+  else if (isElem) role = "element";
+  const valCls = val.k === "ptr" ? "var-val ptr" : "var-val";
+  let valHtml = escapeXml(describe(val));
+  if (isArr && val.items.length <= 16) {
+    valHtml =
+      '<span class="inline-array">' +
+      val.items.map((it, i) => {
+        const hot =
+          (lastArrayWrite &&
+            lastArrayWrite.name === name &&
+            lastArrayWrite.index === i &&
+            lastArrayWrite.frame === frameName) ||
+          (iterationInfo && iterationInfo.source === name && iterationInfo.index === i);
+        return '<span class="inline-array-cell' + (hot ? " hot" : "") + '">' + escapeXml(describe(it)) + "</span>";
+      }).join("") +
+      "</span>";
+  }
+  return (
+    '<div class="' + cls + '"><span class="var-name">' + escapeXml(name) +
+    '</span><span class="' + valCls + '">' + valHtml +
+    '</span><span class="var-kind">' + role + "</span></div>"
+  );
+}
+
+function renderMemory(into) {
+  let framesHtml = "";
+  if (typeof globals !== "undefined" && globals && globals.size) {
+    framesHtml +=
+      '<div class="frame-block frame-global">' +
+      '<div class="frame-title">frame: global</div>';
+    for (const [name, val] of globals) {
+      framesHtml += renderVarRow(name, val, "<global>");
+    }
+    framesHtml += "</div>";
+  }
+  const frames = callStack.length ? callStack : [{ name: "(empty)", locals: new Map() }];
+  const activeFrame = callStack.length ? callStack[callStack.length - 1] : null;
+  for (const fr of frames) {
+    const isActive = fr === activeFrame && fr.name !== "<global>";
+    framesHtml +=
+      '<div class="frame-block' + (isActive ? " frame-active" : "") + '">' +
+      '<div class="frame-title">' +
+      (isActive ? "▸ " : "") +
+      "frame: " + escapeXml(fr.name) +
+      (isActive ? ' <span class="frame-active-tag">executing</span>' : "") +
+      "</div>";
+    if (!fr.locals.size) {
+      framesHtml += '<div style="color:var(--muted);font-size:0.72rem">No locals</div></div>';
+      continue;
+    }
+    for (const [name, val] of fr.locals) {
+      framesHtml += renderVarRow(name, val, fr.name);
+    }
+    framesHtml += "</div>";
+  }
+
+  let heapHtml = "";
+  for (const [, o] of heap) {
+    const parts = Object.entries(o.fields).map(([k, v]) => k + "=" + describe(v));
+    const onIter =
+      iterationInfo && iterationInfo.current && iterationInfo.current.id === o.id;
+    heapHtml +=
+      '<div class="var-row' + (onIter ? " highlight" : "") + '"><span class="var-name">' + escapeXml(o.id) +
+      '</span><span class="var-val">' + escapeXml(o.typeName + " { " + parts.join(", ") + " }") +
+      '</span><span class="var-kind">' + (onIter ? "current" : "heap") + "</span></div>";
+  }
+  if (!heapHtml) heapHtml = '<div class="empty-state" style="padding:1rem;font-size:0.78rem">Heap empty — allocate with <code>new</code></div>';
+
+  const overlay = renderIterationOverlay();
+
+  const out =
+    stdout.length > 0
+      ? '<div class="iter-box" style="grid-column:1/-1;border-top-color:color-mix(in srgb,var(--value) 50%,transparent)">' +
+        '<div class="box-title">Output</div>' +
+        '<pre class="cout-pre">' + escapeXml(stdout.join("\n")) + "</pre></div>"
+      : "";
+
+  const errBanner = errorLine
+    ? '<div class="step-line" style="border-color:color-mix(in srgb,var(--danger) 45%,var(--stroke));background:color-mix(in srgb,var(--danger) 14%,var(--bg-panel))">' +
+      '<strong style="color:var(--danger)">Error on line ' +
+      errorLine +
+      "</strong> · " +
+      escapeXml(lastError || "error") +
+      "</div>"
+    : "";
+
+  const stepBanner =
+    !errorLine && currentSourceLine
+      ? '<div class="step-line">' +
+        (currentLine ? '<strong style="color:var(--accent)">Line ' + currentLine + "</strong> · " : "") +
+        escapeXml(currentSourceLine) +
+        "</div>"
+      : "";
+
+  const liveStructures = typeof renderLiveStructures === "function" ? renderLiveStructures() : "";
+
+  into.innerHTML =
+    '<div class="legend"><span class="l-val">Values</span><span class="l-ptr">Pointers</span><span class="l-iter">Iterator / updated</span></div>' +
+    errBanner +
+    stepBanner +
+    (liveStructures ? '<div style="grid-column:1/-1">' + liveStructures + "</div>" : "") +
+    '<div class="memory-grid">' +
+    (overlay ? '<div style="grid-column:1/-1">' + overlay + "</div>" : "") +
+    '<div class="stack-box"><div class="box-title">Call stack / variables</div>' +
+    framesHtml + '</div><div class="heap-box"><div class="box-title">Heap (new objects)</div>' +
+    heapHtml + "</div>" + out + "</div>";
+}
+
+function emptyStateHtml(message) {
+  return '<div class="empty-state">' + message + "</div>";
+}
+
+function svgDefs() {
+  return (
+    "<defs>" +
+    '<linearGradient id="nodeGrad" x1="0%" y1="0%" x2="0%" y2="100%">' +
+    '<stop offset="0%" stop-color="#333"/><stop offset="100%" stop-color="#252525"/>' +
+    "</linearGradient>" +
+    '<filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">' +
+    '<feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#000" flood-opacity="0.25"/>' +
+    "</filter>" +
+    '<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">' +
+    '<path d="M 0 0 L 10 5 L 0 10 z" fill="#ffb74d"/></marker>' +
+    '<marker id="arrow-iter" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">' +
+    '<path d="M 0 0 L 10 5 L 0 10 z" fill="#f48fb1"/></marker>' +
+    "</defs>"
+  );
+}
+
+function svgNodeRect(x, y, w, h, label, opts) {
+  const hl = opts && opts.highlight;
+  const stroke = hl ? "#f48fb1" : (opts && opts.stroke) || "#a8c7fa";
+  const filter = ' filter="url(#softShadow)"';
+  const sw = hl ? 2 : 1.5;
+  return (
+    '<rect x="' + (x - w / 2) + '" y="' + (y - h / 2) + '" width="' + w + '" height="' + h + '" rx="8" fill="url(#nodeGrad)" stroke="' + stroke + '" stroke-width="' + sw + '"' + filter + "/>" +
+    '<text x="' + x + '" y="' + (y + 5) + '" text-anchor="middle" fill="#e3e3e3" font-size="12" font-family="Roboto Mono" font-weight="500">' + escapeXml(label) + "</text>"
+  );
+}
+
+function svgEdge(x1, y1, x2, y2, label, hl) {
+  const stroke = hl ? "#f48fb1" : "#ffb74d";
+  const marker = hl ? "url(#arrow-iter)" : "url(#arrow)";
+  return (
+    '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" stroke="' + stroke + '" stroke-width="2" stroke-linecap="round" marker-end="' + marker + '"/>' +
+    (label ? '<text x="' + ((x1 + x2) / 2) + '" y="' + ((y1 + y2) / 2 - 6) + '" fill="#9e9e9e" font-size="10" font-family="Roboto Mono" text-anchor="middle">' + escapeXml(label) + "</text>" : "")
+  );
+}
+
+function fieldPtr(obj, names) {
+  for (const n of names) {
+    const v = obj.fields[n];
+    if (v && v.k === "ptr" && typeof v.addr === "string") return v.addr;
+  }
+  return null;
+}
+
+function dataLabel(obj) {
+  for (const n of ["data", "val", "value", "id", "key"]) {
+    if (obj.fields[n]) return describe(obj.fields[n]).replace(/"/g, "");
+  }
+  return obj.typeName;
+}
+
+function renderTree(into) {
+  const treeObjs = [...heap.values()].filter((o) => "left" in o.fields || "right" in o.fields);
+  const listObjs = [...heap.values()].filter((o) => "next" in o.fields);
+
+  if (!treeObjs.length && !listObjs.length) {
+    into.innerHTML = emptyStateHtml(
+      'No tree or list nodes yet. Run a program that uses <code>left</code>/<code>right</code> or <code>next</code> pointers.'
+    );
+    return;
+  }
+
+  const pointed = new Set();
+  for (const o of heap.values()) {
+    for (const v of Object.values(o.fields)) {
+      if (v && v.k === "ptr" && typeof v.addr === "string") pointed.add(v.addr);
+    }
+  }
+
+  let parts = [];
+  let maxW = 700;
+  let totalH = 20;
+
+  function layoutTree(rootId) {
+    const pos = new Map();
+    const edges = [];
+    function place(id, depth, x0, x1) {
+      const o = heap.get(id);
+      if (!o) return;
+      const x = (x0 + x1) / 2;
+      const y = 50 + depth * 88;
+      pos.set(id, { x, y, label: dataLabel(o) });
+      const L = fieldPtr(o, ["left"]);
+      const R = fieldPtr(o, ["right"]);
+      if (L) { edges.push([id, L, "L"]); place(L, depth + 1, x0, x); }
+      if (R) { edges.push([id, R, "R"]); place(R, depth + 1, x, x1); }
+    }
+    place(rootId, 0, 40, 660);
+    return { pos, edges };
+  }
+
+  const treeRoots = treeObjs.filter((o) => !pointed.has(o.id));
+  for (const root of treeRoots) {
+    const { pos, edges } = layoutTree(root.id);
+    const yOff = totalH;
+    for (const [a, b, lab] of edges) {
+      const pa = pos.get(a), pb = pos.get(b);
+      if (!pa || !pb) continue;
+      const hl = iterationInfo && iterationInfo.current && (iterationInfo.current.id === a || iterationInfo.current.id === b);
+      parts.push(svgEdge(pa.x, pa.y + yOff + 16, pb.x, pb.y + yOff - 16, lab, hl));
+    }
+    for (const [id, p] of pos) {
+      const hl = iterationInfo && iterationInfo.current && iterationInfo.current.id === id;
+      const isHead =
+        iterationInfo &&
+        iterationInfo.items &&
+        iterationInfo.items[0] &&
+        iterationInfo.items[0].id === id;
+      parts.push(svgNodeRect(p.x, p.y + yOff, 56, 36, p.label, { highlight: hl, stroke: "#a8c7fa" }));
+      if (hl && iterationInfo) {
+        parts.push(
+          '<rect x="'+(p.x-28)+'" y="'+(p.y+yOff-42)+'" width="56" height="18" rx="8" fill="#f48fb1"/>' +
+          '<text x="'+p.x+'" y="'+(p.y+yOff-29)+'" text-anchor="middle" fill="#3d1028" font-size="10" font-family="Roboto Mono" font-weight="500">'+
+          escapeXml(iterationInfo.varName)+"</text>"
+        );
+      } else if (isHead && iterationInfo && iterationInfo.source) {
+        parts.push(
+          '<text x="'+p.x+'" y="'+(p.y+yOff-28)+'" text-anchor="middle" fill="#a8c7fa" font-size="10" font-family="Roboto Mono" font-weight="500">'+
+          escapeXml(iterationInfo.source)+"</text>"
+        );
+      }
+    }
+    totalH += 50 + [...pos.values()].reduce((m, p) => Math.max(m, p.y), 0) + 40;
+  }
+
+  const listHeads = listObjs.filter((o) => !pointed.has(o.id));
+  for (const head of listHeads) {
+    let id = head.id;
+    let x = 60;
+    const y = totalH + 80;
+    const seen = new Set();
+    let isFirst = true;
+    while (id && !seen.has(id)) {
+      seen.add(id);
+      const o = heap.get(id);
+      if (!o) break;
+      const hl = iterationInfo && iterationInfo.current && iterationInfo.current.id === id;
+      if (isFirst && iterationInfo && iterationInfo.source) {
+        parts.push(
+          '<text x="'+x+'" y="'+(y-42)+'" text-anchor="middle" fill="#a8c7fa" font-size="10" font-family="Roboto Mono" font-weight="500">'+
+          escapeXml(iterationInfo.source)+"</text>"
+        );
+      }
+      if (hl && iterationInfo) {
+        parts.push(
+          '<rect x="'+(x-28)+'" y="'+(y-42)+'" width="56" height="18" rx="8" fill="#f48fb1"/>' +
+          '<text x="'+x+'" y="'+(y-29)+'" text-anchor="middle" fill="#3d1028" font-size="10" font-family="Roboto Mono" font-weight="500">'+
+          escapeXml(iterationInfo.varName)+"</text>"
+        );
+      }
+      parts.push(svgNodeRect(x, y, 56, 36, dataLabel(o), { highlight: hl, stroke: hl ? "#f48fb1" : "#80cbc4" }));
+      isFirst = false;
+      const n = fieldPtr(o, ["next"]);
+      if (n) {
+        parts.push(svgEdge(x + 28, y, x + 72, y, null, hl));
+        x += 100;
+        id = n;
+      } else {
+        parts.push(
+          '<text x="'+(x+52)+'" y="'+(y+4)+'" fill="#9e9e9e" font-size="11" font-family="Roboto Mono" font-style="italic">null</text>'
+        );
+        break;
+      }
+    }
+    maxW = Math.max(maxW, x + 130);
+    totalH = y + 60;
+  }
+
+  into.innerHTML =
+    renderIterationOverlay() +
+    '<div class="legend" style="margin-top:0.75rem"><span class="l-val">Nodes</span><span class="l-ptr">Pointers</span><span class="l-iter">Iterator on top of node</span></div>' +
+    '<div class="viz-wrap"><svg class="viz" viewBox="0 0 '+maxW+" "+Math.max(totalH, 380)+'">' + svgDefs() + parts.join("") + "</svg></div>";
+}
+
+function renderGraph(into) {
+  const nodes = new Map();
+  const edges = [];
+
+  function add(id, label, kind) {
+    if (!nodes.has(id)) nodes.set(id, { label, kind });
+  }
+
+  for (const fr of callStack) {
+    for (const [name, val] of fr.locals) {
+      add("v:" + fr.name + ":" + name, name, "var");
+      if (val.k === "ptr" && typeof val.addr === "string") {
+        const o = heap.get(val.addr);
+        add(val.addr, o ? dataLabel(o) : val.addr, "obj");
+        edges.push(["v:" + fr.name + ":" + name, val.addr, "→"]);
+      } else if (val.k === "ptr" && val.addr && val.addr.stack) {
+        edges.push(["v:" + fr.name + ":" + name, "v:" + fr.name + ":" + val.addr.name, "&"]);
+      }
+    }
+  }
+
+  for (const o of heap.values()) {
+    add(o.id, dataLabel(o), "obj");
+    for (const [fname, v] of Object.entries(o.fields)) {
+      if (v && v.k === "ptr" && typeof v.addr === "string") {
+        add(v.addr, dataLabel(heap.get(v.addr) || { typeName: "?", fields: {} }), "obj");
+        edges.push([o.id, v.addr, fname]);
+      }
+    }
+  }
+
+  if (!nodes.size) {
+    into.innerHTML = emptyStateHtml(
+      "Graph is empty — run a program with pointers or heap objects to see connections."
+    );
+    return;
+  }
+
+  const keys = [...nodes.keys()];
+  const cx = 330, cy = 250, R = Math.min(210, 36 + keys.length * 16);
+  const pos = new Map();
+  keys.forEach((k, i) => {
+    const a = (2 * Math.PI * i) / keys.length - Math.PI / 2;
+    pos.set(k, { x: cx + R * Math.cos(a), y: cy + R * Math.sin(a) });
+  });
+
+  const parts = [];
+  for (const [a, b, lab] of edges) {
+    const pa = pos.get(a), pb = pos.get(b);
+    if (!pa || !pb) continue;
+    const dx = pb.x - pa.x, dy = pb.y - pa.y, len = Math.hypot(dx, dy) || 1;
+    const sx = pa.x + (dx / len) * 26, sy = pa.y + (dy / len) * 26;
+    const ex = pb.x - (dx / len) * 26, ey = pb.y - (dy / len) * 26;
+    const hl = iterationInfo && iterationInfo.current && (a === iterationInfo.current.id || b === iterationInfo.current.id);
+    parts.push(svgEdge(sx, sy, ex, ey, lab, hl));
+  }
+  for (const [k, meta] of nodes) {
+    const p = pos.get(k);
+    const hl = iterationInfo && iterationInfo.current && k === iterationInfo.current.id;
+    const isSrcVar =
+      iterationInfo &&
+      meta.kind === "var" &&
+      meta.label === iterationInfo.source;
+    const isIterVar =
+      iterationInfo &&
+      meta.kind === "var" &&
+      meta.label === iterationInfo.varName;
+    const stroke = meta.kind === "var" ? "#a8c7fa" : "#80cbc4";
+    const activeStroke = hl || isIterVar ? "#f48fb1" : isSrcVar ? "#a8c7fa" : stroke;
+    const label = meta.label.length > 8 ? meta.label.slice(0, 7) + "…" : meta.label;
+    const r = 24;
+    const filter = ' filter="url(#softShadow)"';
+    parts.push(
+      '<circle cx="'+p.x+'" cy="'+p.y+'" r="'+r+'" fill="url(#nodeGrad)" stroke="'+activeStroke+'" stroke-width="'+(hl||isIterVar||isSrcVar?2:1.5)+'"'+filter+'/>' +
+      '<text x="'+p.x+'" y="'+(p.y+4)+'" text-anchor="middle" fill="#e3e3e3" font-size="11" font-family="Roboto Mono" font-weight="500">'+escapeXml(label)+"</text>"
+    );
+    if (hl && iterationInfo) {
+      parts.push(
+        '<rect x="'+(p.x-30)+'" y="'+(p.y-46)+'" width="60" height="18" rx="8" fill="#f48fb1"/>' +
+        '<text x="'+p.x+'" y="'+(p.y-33)+'" text-anchor="middle" fill="#3d1028" font-size="10" font-family="Roboto Mono" font-weight="500">'+
+        escapeXml(iterationInfo.varName)+"</text>"
+      );
+    }
+  }
+
+  into.innerHTML =
+    renderIterationOverlay() +
+    '<div class="legend" style="margin-top:0.75rem"><span class="l-val">Variables / objects</span><span class="l-ptr">Pointer edges</span><span class="l-iter">Iterator on top</span></div>' +
+    '<div class="viz-wrap"><svg class="viz" viewBox="0 0 660 520">' + svgDefs() + parts.join("") + "</svg></div>";
+}
+
+function renderAll(into) {
+  into.innerHTML = '<div style="display:grid;gap:1rem"><div id="all-mem"></div><div id="all-tree"></div><div id="all-graph"></div></div>';
+  renderMemory(into.querySelector("#all-mem"));
+  renderTree(into.querySelector("#all-tree"));
+  renderGraph(into.querySelector("#all-graph"));
+}
+
+function refresh() {
+  renderCodeHighlight();
+  const tab = document.querySelector(".tab.active").dataset.tab;
+  if (tab === "memory") renderMemory(document.getElementById("panel-memory"));
+  if (tab === "tree") renderTree(document.getElementById("panel-tree"));
+  if (tab === "graph") renderGraph(document.getElementById("panel-graph"));
+  if (tab === "all") renderAll(document.getElementById("panel-all"));
+}

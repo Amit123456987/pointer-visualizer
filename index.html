@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Program Visualizer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <header class="app-bar">
+    <div class="brand">
+      <h1>Program Visualizer</h1>
+      <p>Paste code — watch variables, pointers, trees, and graphs as it runs</p>
+    </div>
+    <div class="toolbar">
+      <select id="language" title="Programming language"></select>
+      <select id="examples" title="Load program"></select>
+      <button type="button" id="btnPrograms" class="programs-trigger" title="Add or manage your programs">
+        <span class="programs-trigger-icon" aria-hidden="true">+</span>
+        Programs
+      </button>
+      <button type="button" id="btnRun" class="primary">Run</button>
+      <button type="button" id="btnStep">Step</button>
+      <button type="button" id="btnReset">Reset</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="left">
+      <div class="editor-panel">
+        <header class="editor-header">
+          <div class="editor-header-top">
+            <input
+              type="text"
+              id="programTitle"
+              class="editor-title"
+              maxlength="80"
+              placeholder="Untitled program"
+              spellcheck="false"
+              aria-label="Program name"
+            />
+            <span id="editorKindBadge" class="editor-badge">Example</span>
+          </div>
+          <div class="editor-header-bottom">
+            <span id="editorStats" class="editor-stats">0 lines</span>
+            <span id="editorDirty" class="editor-dirty" hidden>● Unsaved changes</span>
+            <div class="editor-actions">
+              <button type="button" id="btnSaveCurrent" class="editor-save primary">Save</button>
+            </div>
+          </div>
+        </header>
+        <div class="code-editor" id="codeEditor">
+          <div id="codeView" class="code-view" aria-live="polite"></div>
+          <textarea id="code" spellcheck="false" aria-label="Edit program"></textarea>
+        </div>
+      </div>
+      <div class="help" id="languageHelp"></div>
+    </aside>
+
+    <main class="right">
+      <nav class="tabs" role="tablist" aria-label="Visualization views">
+        <button type="button" class="tab active" data-tab="memory" role="tab" aria-selected="true">Memory</button>
+        <button type="button" class="tab" data-tab="tree" role="tab">Tree</button>
+        <button type="button" class="tab" data-tab="graph" role="tab">Graph</button>
+        <button type="button" class="tab" data-tab="all" role="tab">All</button>
+      </nav>
+      <div class="stage">
+        <div id="panel-memory" class="panel active"></div>
+        <div id="panel-tree" class="panel"></div>
+        <div id="panel-graph" class="panel"></div>
+        <div id="panel-all" class="panel"></div>
+      </div>
+      <div id="status" class="status">Choose a language, paste a program or load an example, then Run / Step.</div>
+    </main>
+  </div>
+
+  <dialog id="programsDialog" class="programs-dialog">
+    <div class="programs-shell">
+      <header class="programs-header">
+        <div>
+          <h2>My programs</h2>
+          <p class="programs-subtitle">Open a saved program in the editor, or save your current edits</p>
+        </div>
+        <button type="button" id="btnClosePrograms" class="programs-close" aria-label="Close">&times;</button>
+      </header>
+
+      <section class="programs-add">
+        <label for="programName">New program name</label>
+        <div class="programs-add-row">
+          <input type="text" id="programName" maxlength="80" placeholder="e.g. Number of LIS" autocomplete="off" />
+          <button type="button" id="btnAddProgram" class="primary">Save from editor</button>
+        </div>
+        <p id="programsMessage" class="programs-message" hidden></p>
+      </section>
+
+      <div class="programs-divider">
+        <span>Saved for <strong id="programsLangLabel">C++</strong></span>
+      </div>
+
+      <div id="programList" class="programs-list"></div>
+      <p id="programsEmpty" class="programs-empty">
+        <span class="programs-empty-icon" aria-hidden="true">{}</span>
+        No saved programs yet — edit code in the editor, then save it here.
+      </p>
+    </div>
+  </dialog>
+
+  <!-- Load order matters: shared globals across classic scripts -->
+  <script src="js/errors.js"></script>
+  <script src="js/examples.js"></script>
+  <script src="js/languages.js"></script>
+  <script src="js/tokenizer.js"></script>
+  <script src="js/parser.js"></script>
+  <script src="js/lang-cpp.js"></script>
+  <script src="js/lang-javascript.js"></script>
+  <script src="js/programs.js"></script>
+  <script src="js/runtime.js"></script>
+  <script src="js/iteration.js"></script>
+  <script src="js/syntax.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
