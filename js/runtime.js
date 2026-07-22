@@ -3,6 +3,7 @@ let heap, nextId, globals, callStack, stdout, structs;
 let ipQueue; // flat step queue of closures for stepping
 let stepIndex;
 let iterationInfo;
+let iterationStack; // active iterators (nested loops / multiple pointers on same array)
 let lastArrayWrite; // { name, index, frame } — last array cell written
 let lastError;
 let currentSourceLine; // descriptive
@@ -30,6 +31,7 @@ function resetVm() {
   ipQueue = [];
   stepIndex = 0;
   iterationInfo = null;
+  iterationStack = [];
   lastArrayWrite = null;
   lastError = null;
   currentSourceLine = "";
@@ -546,7 +548,10 @@ function enqueueStmt(st) {
   if (st.type === "while") {
     ipQueue.push(function whileStep() {
       markExec(st, "line " + (st.line || "?") + ": while (...)");
-      if (!truthy(evalExpr(st.cond))) return;
+      if (!truthy(evalExpr(st.cond))) {
+        if (typeof popIterationForWhile === "function") popIterationForWhile(st);
+        return;
+      }
       trackLoopIteration(st);
       const remaining = ipQueue.slice(stepIndex + 1);
       ipQueue.length = stepIndex + 1;
@@ -563,7 +568,10 @@ function enqueueStmt(st) {
     if (st.init) enqueueStmt(st.init);
     ipQueue.push(function forStep() {
       markExec(st, "line " + (st.line || "?") + ": for (...)");
-      if (st.cond && !truthy(evalExpr(st.cond))) return;
+      if (st.cond && !truthy(evalExpr(st.cond))) {
+        if (typeof popIterationForLoop === "function") popIterationForLoop(st);
+        return;
+      }
       trackForIteration(st);
       const remaining = ipQueue.slice(stepIndex + 1);
       ipQueue.length = stepIndex + 1;
@@ -630,6 +638,7 @@ function execStmtSync(st) {
       trackLoopIteration(st);
       for (const s of st.body) execStmtSync(s);
     }
+    if (typeof popIterationForWhile === "function") popIterationForWhile(st);
     return;
   }
   if (st.type === "for") {
@@ -641,6 +650,7 @@ function execStmtSync(st) {
       for (const s of st.body) execStmtSync(s);
       if (st.upd) evalExpr(st.upd);
     }
+    if (typeof popIterationForLoop === "function") popIterationForLoop(st);
     return;
   }
 }

@@ -51,8 +51,10 @@ function syncEditorScroll(fromTextarea) {
 }
 
 function renderVarRow(name, val, frameName) {
-  const isIter = iterationInfo && name === iterationInfo.varName;
-  const isSrc = iterationInfo && name === iterationInfo.source;
+  const isIter = typeof isActiveIteratorVar === "function" && isActiveIteratorVar(name);
+  const isSrc =
+    iterationStack.some((it) => it.source === name) ||
+    (iterationInfo && name === iterationInfo.source);
   const isElem = iterationInfo && iterationInfo.elementVar && name === iterationInfo.elementVar;
   const isArr = val.k === "arr";
   let cls = "var-row";
@@ -70,13 +72,26 @@ function renderVarRow(name, val, frameName) {
     valHtml =
       '<span class="inline-array">' +
       val.items.map((it, i) => {
+        const markers =
+          typeof arrayIteratorsFor === "function"
+            ? arrayIteratorsFor(name, val.items.length).filter((m) => m.index === i)
+            : [];
         const hot =
           (lastArrayWrite &&
             lastArrayWrite.name === name &&
             lastArrayWrite.index === i &&
             lastArrayWrite.frame === frameName) ||
-          (iterationInfo && iterationInfo.source === name && iterationInfo.index === i);
-        return '<span class="inline-array-cell' + (hot ? " hot" : "") + '">' + escapeXml(describe(it)) + "</span>";
+          markers.length > 0;
+        const title = markers.length ? markers.map((m) => m.varName).join(", ") : "";
+        return (
+          '<span class="inline-array-cell' +
+          (hot ? " hot" : "") +
+          '"' +
+          (title ? ' title="' + escapeXml(title) + '"' : "") +
+          ">" +
+          escapeXml(describe(it)) +
+          "</span>"
+        );
       }).join("") +
       "</span>";
   }

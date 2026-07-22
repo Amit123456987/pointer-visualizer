@@ -1,4 +1,73 @@
 /* ========== ITERATION TRACKING ========== */
+function iterVarFromFor(st) {
+  if (st.init && st.init.type === "vardecl") return st.init.name;
+  if (st.upd && st.upd.type === "assign" && st.upd.left.type === "ident") return st.upd.left.name;
+  if (
+    st.upd &&
+    (st.upd.type === "preop" || st.upd.type === "postop") &&
+    st.upd.expr &&
+    st.upd.expr.type === "ident"
+  ) {
+    return st.upd.expr.name;
+  }
+  return null;
+}
+
+function pushIteration(info) {
+  iterationStack = iterationStack.filter((it) => it.varName !== info.varName);
+  iterationStack.push(info);
+  iterationInfo = info;
+}
+
+function popIterationVar(varName) {
+  if (!varName) return;
+  iterationStack = iterationStack.filter((it) => it.varName !== varName);
+  iterationInfo = iterationStack.length ? iterationStack[iterationStack.length - 1] : null;
+}
+
+function popIterationForLoop(st) {
+  popIterationVar(iterVarFromFor(st));
+}
+
+function popIterationForWhile(st) {
+  const c = st.cond;
+  const ptrName = c && c.type === "binary" && c.left.type === "ident" ? c.left.name : null;
+  popIterationVar(ptrName);
+}
+
+function arrayIteratorsFor(arrName, length) {
+  const out = [];
+  for (const it of iterationStack) {
+    if (it.kind === "array" && it.source === arrName && it.items.length === length) {
+      out.push({ varName: it.varName, index: it.index });
+    }
+  }
+  return out;
+}
+
+function isActiveIteratorVar(name) {
+  return iterationStack.some((it) => it.varName === name);
+}
+
+function iterationBadgesHtml(markers, kind) {
+  if (!markers.length) return "";
+  return (
+    '<span class="structure-badges">' +
+    markers
+      .map(
+        (m, i) =>
+          '<span class="structure-badge ' +
+          (kind || "iter") +
+          (i > 0 ? " iter-alt" : "") +
+          '">' +
+          escapeXml(m.varName) +
+          "</span>"
+      )
+      .join("") +
+    "</span>"
+  );
+}
+
 function allLocals() {
   const out = [];
   for (const fr of callStack) {
@@ -114,7 +183,8 @@ function trackForIteration(st) {
         } catch (_) {}
       }
       const idx = iv.k === "prim" ? iv.v : 0;
-      iterationInfo = {
+      const fr = typeof currentFrame === "function" && currentFrame() ? currentFrame().name : "";
+      pushIteration({
         varName: iterVar,
         source: source || "(range)",
         elementVar,
@@ -122,10 +192,11 @@ function trackForIteration(st) {
         index: idx,
         items: items.length ? items : [{ display: current, index: idx }],
         current: { display: current, id: currentId, index: idx },
+        frame: fr,
         relation: source
           ? iterVar + " iterates over " + source + (elementVar ? " (via " + elementVar + ")" : "")
           : iterVar + " counts range",
-      };
+      });
     }
   } catch (_) {}
 }
@@ -182,7 +253,7 @@ function trackLoopIteration(st) {
     if (!ptrName) return;
     const val = getVar(ptrName);
     if (!val || val.k !== "ptr" || typeof val.addr !== "string") {
-      iterationInfo = {
+      pushIteration({
         varName: ptrName,
         source: "(null)",
         kind: "linkedlist",
@@ -190,7 +261,7 @@ function trackLoopIteration(st) {
         items: [],
         current: { display: "nullptr" },
         relation: ptrName + " finished iterating",
-      };
+      });
       return;
     }
 
@@ -206,7 +277,7 @@ function trackLoopIteration(st) {
     const curItem = idx >= 0 ? items[idx] : { display: describe(val), id: cur };
 
     // element alias: cout << curr->data etc. — use ptr itself as the floating badge
-    iterationInfo = {
+    pushIteration({
       varName: ptrName,
       source,
       elementVar: null,
@@ -215,7 +286,7 @@ function trackLoopIteration(st) {
       items: items.length ? items : [curItem],
       current: { display: curItem.display, id: cur },
       relation: ptrName + " iterates over " + source,
-    };
+    });
   } catch (_) {}
 }
 
@@ -293,14 +364,8 @@ function renderLiveStructures() {
     '<p class="structures-hint">Updates on every step — highlighted cells were just written</p>';
 
   for (const arr of arrays) {
-    const iterActive =
-      iterationInfo &&
-      iterationInfo.kind === "array" &&
-      iterationInfo.source === arr.name &&
-      iterationInfo.items.length === arr.items.length;
-
     const slots = arr.items.map((it, i) => {
-      const isIter = iterActive && iterationInfo.index === i;
+      const markers = arrayIteratorsFor(arr.name, arr.items.length).filter((m) => m.index === i);
       const isWrite =
         lastArrayWrite &&
         lastArrayWrite.name === arr.name &&
@@ -308,11 +373,11 @@ function renderLiveStructures() {
         lastArrayWrite.frame === arr.frame;
       let cls = "structure-slot";
       if (isWrite) cls += " updated";
-      if (isIter) cls += " active";
+      if (markers.length) cls += " active";
 
       let badge = "";
       if (isWrite) badge = '<span class="structure-badge write">updated</span>';
-      else if (isIter) badge = '<span class="structure-badge iter">' + escapeXml(iterationInfo.varName) + "</span>";
+      else if (markers.length) badge = iterationBadgesHtml(markers);
 
       return (
         '<div class="' + cls + '">' +
@@ -373,27 +438,56 @@ function renderIterationOverlay() {
     kind === "tree" ? "Tree" :
     kind === "graph" ? "Graph" : "Structure";
 
+  const sameSource =
+    kind === "array" && iterationInfo.source && iterationInfo.source !== "(range)"
+      ? iterationStack.filter(
+          (it) =>
+            it.kind === "array" &&
+            it.source === iterationInfo.source &&
+            it.items.length === iterationInfo.items.length
+        )
+      : iterationStack.length
+        ? iterationStack.filter((it) => it.varName === iterationInfo.varName)
+        : [iterationInfo];
+
+  const iterChips = sameSource
+    .map(
+      (it) =>
+        '<span class="chip iter">' +
+        escapeXml(it.varName) +
+        " @ " +
+        (it.index != null ? "[" + it.index + "]" : "#" + (it.index + 1)) +
+        "</span>"
+    )
+    .join("");
+
   const headline =
     '<div class="overlay-headline">' +
     '<span class="kind-pill">' + kindLabel + "</span>" +
-    '<span class="chip iter">' + escapeXml(iterationInfo.varName) + "</span>" +
-    '<span class="over-word">iterates over</span>' +
+    iterChips +
+    '<span class="over-word">over</span>' +
     '<span class="chip src">' + escapeXml(iterationInfo.source) + "</span>" +
     (iterationInfo.elementVar
       ? '<span class="over-word">element alias</span><span class="chip">' +
         escapeXml(iterationInfo.elementVar) + " = " + escapeXml(iterationInfo.current.display) +
         "</span>"
       : "") +
-    '<span class="over-word">position ' +
-    (iterationInfo.index + 1) + " / " + iterationInfo.items.length +
-    "</span></div>";
+    "</div>";
 
   const slots = iterationInfo.items.map((it, i) => {
-    const active = i === iterationInfo.index;
+    const markers =
+      kind === "array"
+        ? sameSource.filter((it) => it.index === i)
+        : i === iterationInfo.index
+          ? [iterationInfo]
+          : [];
+    const active = markers.length > 0;
     let badge = "";
     let srcTag = "";
-    if (active) {
-      badge = '<span class="badge">' + escapeXml(iterationInfo.varName) + "</span>";
+    if (markers.length) {
+      badge = markers
+        .map((m) => '<span class="badge">' + escapeXml(m.varName) + "</span>")
+        .join("");
     }
     if (i === 0 && iterationInfo.source && iterationInfo.source !== "(range)") {
       srcTag = '<span class="src-tag">' + escapeXml(iterationInfo.source) + "</span>";
