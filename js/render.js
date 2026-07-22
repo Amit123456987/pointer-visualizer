@@ -81,6 +81,10 @@ function renderVarRow(name, val, frameName, roleOverride) {
   const valCls = val.k === "ptr" ? "var-val ptr" : "var-val";
   let valHtml = escapeXml(describe(val));
   if (isMatrix && val.items.length <= 12) {
+    const miters =
+      typeof matrixIteratorsFor === "function" ? matrixIteratorsFor(name) : [];
+    const activeRows = new Set(miters.filter((m) => m.axis === "row").map((m) => m.index));
+    const activeCols = new Set(miters.filter((m) => m.axis === "col").map((m) => m.index));
     valHtml =
       '<span class="inline-matrix">' +
       val.items
@@ -91,13 +95,24 @@ function renderVarRow(name, val, frameName, roleOverride) {
                 typeof isLastArrayWrite === "function"
                   ? isLastArrayWrite(row, c, name, frameName, r)
                   : false;
+              const onRow = activeRows.has(r);
+              const onCol = activeCols.has(c);
               let cellCls = "inline-array-cell";
               if (isWrite) cellCls += " updated";
+              else if (onRow && onCol) cellCls += " hot";
+              else if (onRow || onCol) cellCls += " matrix-axis-hot";
+              const tips = [];
+              if (isWrite) tips.push("wrote [" + r + "][" + c + "]");
+              miters.forEach((m) => {
+                if (m.axis === "row" && m.index === r) tips.push(m.varName + " row");
+                if (m.axis === "col" && m.index === c) tips.push(m.varName + " col");
+              });
               return (
                 '<span class="' +
                 cellCls +
                 '"' +
-                (isWrite ? ' title="wrote [' + r + "][" + c + ']" data-arr-write="1"' : "") +
+                (tips.length ? ' title="' + escapeXml(tips.join(", ")) + '"' : "") +
+                (isWrite ? ' data-arr-write="1"' : "") +
                 ">" +
                 (isWrite ? '<span class="inline-idx">[' + r + "][" + c + "]</span>" : "") +
                 escapeXml(describe(it)) +

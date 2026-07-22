@@ -45,19 +45,31 @@ function arrayIteratorsFor(arrName, length) {
   return out;
 }
 
+/** Row/col iterators currently walking a 2D matrix */
+function matrixIteratorsFor(matName) {
+  const out = [];
+  for (const it of iterationStack) {
+    if (it.kind === "matrix" && it.source === matName && (it.axis === "row" || it.axis === "col")) {
+      out.push({ varName: it.varName, axis: it.axis, index: it.index });
+    }
+  }
+  return out;
+}
+
 function isActiveIteratorVar(name) {
   return iterationStack.some((it) => it.varName === name);
 }
 
-function iterationBadgesHtml(markers, kind) {
+function iterationBadgesHtml(markers, kind, extraClass) {
   if (!markers.length) return "";
+  const cls = (kind || "iter") + (extraClass ? " " + extraClass : "");
   return (
     '<span class="structure-badges">' +
     markers
       .map(
         (m, i) =>
           '<span class="structure-badge ' +
-          (kind || "iter") +
+          cls +
           (i > 0 ? " iter-alt" : "") +
           '" data-ptr="' +
           escapeXml(m.varName) +
@@ -100,6 +112,11 @@ function findArraySource(iterName) {
   for (const l of locals) {
     if (l.val && l.val.k === "arr") return l.name;
   }
+  if (typeof globals !== "undefined" && globals) {
+    for (const [name, val] of globals) {
+      if (val && val.k === "arr") return name;
+    }
+  }
   return null;
 }
 
@@ -107,7 +124,10 @@ function classifyStructure(sourceName, items) {
   if (!sourceName) return "range";
   try {
     const v = getVar(sourceName);
-    if (v && v.k === "arr") return "array";
+    if (v && v.k === "arr") {
+      if (typeof isMatrixValue === "function" && isMatrixValue(v)) return "matrix";
+      return "array";
+    }
   } catch (_) {}
   if (items && items.some((it) => it.id)) {
     const o = items[0] && items[0].id ? heap.get(items[0].id) : null;
@@ -119,6 +139,18 @@ function classifyStructure(sourceName, items) {
     return "linkedlist";
   }
   return "structure";
+}
+
+/** Flatten mat[i][j] → { base: "mat", indices: [iExpr, jExpr] } */
+function flattenIndexChain(e) {
+  const indices = [];
+  let cur = e;
+  while (cur && cur.type === "index") {
+    indices.unshift(cur.index);
+    cur = cur.obj;
+  }
+  if (!cur || cur.type !== "ident") return null;
+  return { base: cur.name, indices };
 }
 
 function trackForIteration(st) {
@@ -134,70 +166,190 @@ function trackForIteration(st) {
     }
 
     let source = null;
+    let oneDSource = null;
+    let matrixAxis = null; // "row" | "col"
     let elementVar = null; // x in: int x = arr[i]
-    const walk = (nodes) => {
-      for (const n of nodes || []) {
-        if (n.type === "vardecl" && n.init) {
-          if (n.init.type === "index" && n.init.obj.type === "ident") {
-            source = n.init.obj.name;
-            elementVar = n.name;
-          }
-          walkExpr(n.init);
+
+    const noteIndex = (e) => {
+      const chain = flattenIndexChain(e);
+      if (!chain || !iterVar) return;
+      let usesIter = false;
+      let axis = null;
+      for (let a = 0; a < chain.indices.length; a++) {
+        const idx = chain.indices[a];
+        if (idx && idx.type === "ident" && idx.name === iterVar) {
+          usesIter = true;
+          if (chain.indices.length >= 2) axis = a === 0 ? "row" : "col";
         }
-        if (n.type === "expr") walkExpr(n.expr);
+      }
+      if (!usesIter) return;
+      if (axis) {
+        source = chain.base;
+        matrixAxis = axis;
+      } else if (!matrixAxis) {
+        oneDSource = chain.base;
       }
     };
+
     const walkExpr = (e) => {
       if (!e) return;
-      if (e.type === "index" && e.obj.type === "ident") source = e.obj.name;
+      if (e.type === "index") {
+        noteIndex(e);
+        walkExpr(e.obj);
+        walkExpr(e.index);
+        return;
+      }
       if (e.type === "assign") {
-        if (e.left.type === "ident" && e.right.type === "index" && e.right.obj.type === "ident") {
-          elementVar = e.left.name;
-          source = e.right.obj.name;
-        }
-        if (e.left.type === "index" && e.left.obj.type === "ident") {
-          source = e.left.obj.name;
+        if (e.left.type === "ident" && e.right.type === "index") {
+          const chain = flattenIndexChain(e.right);
+          if (chain && chain.indices.length === 1) {
+            elementVar = e.left.name;
+            if (!matrixAxis) oneDSource = chain.base;
+          }
         }
         walkExpr(e.left);
         walkExpr(e.right);
+        return;
       }
-      if (e.type === "binary") { walkExpr(e.left); walkExpr(e.right); }
-      if (e.type === "cout") e.parts.forEach(walkExpr);
+      if (e.type === "binary" || e.type === "logical") {
+        walkExpr(e.left);
+        walkExpr(e.right);
+        return;
+      }
+      if (e.type === "unary" || e.type === "preop" || e.type === "postop") {
+        walkExpr(e.expr);
+        return;
+      }
+      if (e.type === "call") {
+        (e.args || []).forEach(walkExpr);
+        return;
+      }
+      if (e.type === "cout") {
+        (e.parts || []).forEach(walkExpr);
+        return;
+      }
       if (e.type === "member") walkExpr(e.obj);
+      if (e.type === "arraylit") (e.items || []).forEach(walkExpr);
     };
-    walk(st.body);
-    if (!source) source = findArraySource(iterVar);
+
+    const walkStmt = (n) => {
+      if (!n) return;
+      if (Array.isArray(n)) {
+        n.forEach(walkStmt);
+        return;
+      }
+      if (n.type === "vardecl") {
+        if (n.init && n.init.type === "index") {
+          const chain = flattenIndexChain(n.init);
+          if (chain && chain.indices.length === 1) {
+            elementVar = n.name;
+            if (!matrixAxis) oneDSource = chain.base;
+          }
+        }
+        walkExpr(n.init);
+        return;
+      }
+      if (n.type === "expr") {
+        walkExpr(n.expr);
+        return;
+      }
+      if (n.type === "if") {
+        walkExpr(n.cond);
+        walkStmt(n.then);
+        walkStmt(n.else);
+        return;
+      }
+      if (n.type === "for") {
+        walkStmt(n.init);
+        walkExpr(n.cond);
+        walkExpr(n.upd);
+        walkStmt(n.body);
+        return;
+      }
+      if (n.type === "while") {
+        walkExpr(n.cond);
+        walkStmt(n.body);
+        return;
+      }
+      if (n.type === "return") walkExpr(n.value);
+    };
+
+    walkStmt(st.body);
+
+    if (matrixAxis && source) {
+      // Prefer 2D association when the loop indexes a matrix.
+    } else if (oneDSource) {
+      source = oneDSource;
+      matrixAxis = null;
+    } else if (!source) {
+      source = findArraySource(iterVar);
+    }
 
     if (iterVar) {
       const iv = getVar(iterVar);
       let items = [];
       let current = describe(iv);
       let currentId = null;
+      let kind = classifyStructure(source, items);
+      let axis = matrixAxis;
+
       if (source) {
         try {
           const arr = getVar(source);
           if (arr && arr.k === "arr") {
-            items = arr.items.map((it, i) => ({ display: describe(it), index: i }));
+            if (typeof isMatrixValue === "function" && isMatrixValue(arr)) {
+              kind = "matrix";
+              if (!axis) axis = "row";
+              if (axis === "col") {
+                const row0 = arr.items[0];
+                items = (row0 && row0.items ? row0.items : []).map((it, i) => ({
+                  display: describe(it),
+                  index: i,
+                }));
+              } else {
+                items = arr.items.map((row, i) => ({
+                  display: row && row.k === "arr" ? "[" + row.items.map(describe).join(", ") + "]" : describe(row),
+                  index: i,
+                }));
+              }
+            } else {
+              items = arr.items.map((it, i) => ({ display: describe(it), index: i }));
+            }
             if (iv.k === "prim" && items[iv.v]) {
               current = items[iv.v].display;
             }
           }
         } catch (_) {}
       }
-      const idx = iv.k === "prim" ? iv.v : 0;
+
+      const idx = iv.k === "prim" ? Math.trunc(Number(iv.v)) : 0;
       const fr = typeof currentFrame === "function" && currentFrame() ? currentFrame().name : "";
+      let relation;
+      if (kind === "matrix" && source) {
+        relation =
+          iterVar +
+          " iterates " +
+          (axis === "col" ? "columns" : "rows") +
+          " of " +
+          source;
+      } else if (source) {
+        relation =
+          iterVar + " iterates over " + source + (elementVar ? " (via " + elementVar + ")" : "");
+      } else {
+        relation = iterVar + " counts range";
+      }
+
       pushIteration({
         varName: iterVar,
         source: source || "(range)",
         elementVar,
-        kind: classifyStructure(source, items),
+        kind,
+        axis: kind === "matrix" ? axis || "row" : null,
         index: idx,
         items: items.length ? items : [{ display: current, index: idx }],
         current: { display: current, id: currentId, index: idx },
         frame: fr,
-        relation: source
-          ? iterVar + " iterates over " + source + (elementVar ? " (via " + elementVar + ")" : "")
-          : iterVar + " counts range",
+        relation,
       });
     }
   } catch (_) {}
@@ -380,16 +532,42 @@ function renderLiveStructures() {
     let hasWrite = false;
 
     if (arr.matrix) {
+      const miters =
+        typeof matrixIteratorsFor === "function" ? matrixIteratorsFor(arr.name) : [];
+      const rowIters = miters.filter((m) => m.axis === "row");
+      const colIters = miters.filter((m) => m.axis === "col");
+      const activeRows = new Set(rowIters.map((m) => m.index));
+      const activeCols = new Set(colIters.map((m) => m.index));
+      const rows = arr.rows.length;
+      const cols = rows ? arr.rows[0].cells.length : 0;
+
+      const colHeads = [];
+      for (let c = 0; c < cols; c++) {
+        const markers = colIters.filter((m) => m.index === c);
+        colHeads.push(
+          '<div class="matrix-col-head' + (markers.length ? " active" : "") + '">' +
+            (markers.length ? iterationBadgesHtml(markers, "iter", "iter-col") : "") +
+            '<span class="matrix-axis-label">j=' + c + "</span>" +
+          "</div>"
+        );
+      }
+
       const rowHtml = arr.rows
         .map((row, r) => {
+          const rowMarkers = rowIters.filter((m) => m.index === r);
           const slots = row.cells.map((it, c) => {
             const isWrite =
               typeof isLastArrayWrite === "function"
                 ? isLastArrayWrite(row.arr, c, arr.name, arr.frame, r)
                 : false;
             if (isWrite) hasWrite = true;
+            const onRow = activeRows.has(r);
+            const onCol = activeCols.has(c);
             let cls = "structure-slot";
             if (isWrite) cls += " updated";
+            if (onRow && onCol) cls += " active matrix-cross";
+            else if (onRow) cls += " matrix-row-hot";
+            else if (onCol) cls += " matrix-col-hot";
             let badge = "";
             if (isWrite) {
               badge =
@@ -406,21 +584,43 @@ function renderLiveStructures() {
               '<span class="structure-idx' + (isWrite ? " idx-updated" : "") + '">[' + r + "][" + c + "]</span></div>"
             );
           });
-          return '<div class="matrix-row">' + slots.join("") + "</div>";
+          return (
+            '<div class="matrix-row' + (rowMarkers.length ? " row-active" : "") + '">' +
+            '<div class="matrix-row-label' + (rowMarkers.length ? " active" : "") + '">' +
+            (rowMarkers.length ? iterationBadgesHtml(rowMarkers, "iter", "iter-row") : "") +
+            '<span class="matrix-axis-label">i=' + r + "</span>" +
+            "</div>" +
+            slots.join("") +
+            "</div>"
+          );
         })
         .join("");
 
-      const rows = arr.rows.length;
-      const cols = rows ? arr.rows[0].cells.length : 0;
+      const iterMeta = miters.length
+        ? miters
+            .map((m) => m.varName + (m.axis === "row" ? "↓" : "→") + "[" + m.index + "]")
+            .join(" · ") + " · "
+        : "";
+
       html +=
-        '<div class="structure-card array-card matrix-card' + (hasWrite ? " has-write" : "") + '">' +
+        '<div class="structure-card array-card matrix-card' +
+        (hasWrite ? " has-write" : "") +
+        (miters.length ? " has-iters" : "") +
+        '">' +
         '<div class="structure-head"><span class="structure-name">' + escapeXml(arr.label) + "</span>" +
         '<span class="structure-meta">' +
+        iterMeta +
         (hasWrite && lastArrayWrite
           ? "wrote [" + lastArrayWrite.row + "][" + lastArrayWrite.index + "] · "
           : "") +
         rows + "×" + cols + " matrix</span></div>" +
-        '<div class="structure-track matrix-track">' + rowHtml + "</div></div>";
+        '<div class="structure-track matrix-track">' +
+        '<div class="matrix-row matrix-col-headers">' +
+        '<div class="matrix-corner"></div>' +
+        colHeads.join("") +
+        "</div>" +
+        rowHtml +
+        "</div></div>";
       continue;
     }
 
@@ -508,11 +708,114 @@ function renderIterationOverlay() {
   if (!iterationInfo || !iterationInfo.items || !iterationInfo.items.length) return "";
 
   const kind = iterationInfo.kind || "structure";
+
+  if (kind === "matrix" && iterationInfo.source && iterationInfo.source !== "(range)") {
+    try {
+      const mat = getVar(iterationInfo.source);
+      if (mat && typeof isMatrixValue === "function" && isMatrixValue(mat)) {
+        const miters = matrixIteratorsFor(iterationInfo.source);
+        const rowIters = miters.filter((m) => m.axis === "row");
+        const colIters = miters.filter((m) => m.axis === "col");
+        const activeRows = new Set(rowIters.map((m) => m.index));
+        const activeCols = new Set(colIters.map((m) => m.index));
+        const nRows = mat.items.length;
+        const nCols = nRows && mat.items[0].items ? mat.items[0].items.length : 0;
+
+        const chips = miters
+          .map(
+            (m) =>
+              '<span class="chip iter">' +
+              escapeXml(m.varName) +
+              (m.axis === "row" ? " row" : " col") +
+              " [" +
+              m.index +
+              "]</span>"
+          )
+          .join("");
+
+        const colHeads = [];
+        for (let c = 0; c < nCols; c++) {
+          const markers = colIters.filter((m) => m.index === c);
+          colHeads.push(
+            '<div class="matrix-col-head' + (markers.length ? " active" : "") + '">' +
+              (markers.length
+                ? markers
+                    .map(
+                      (m) =>
+                        '<span class="badge" data-ptr="' +
+                        escapeXml(m.varName) +
+                        '" data-ptr-anchor="center">' +
+                        escapeXml(m.varName) +
+                        "</span>"
+                    )
+                    .join("")
+                : "") +
+              '<span class="matrix-axis-label">[' + c + "]</span></div>"
+          );
+        }
+
+        let grid = '<div class="matrix-row matrix-col-headers"><div class="matrix-corner"></div>' + colHeads.join("") + "</div>";
+        for (let r = 0; r < nRows; r++) {
+          const rowMarkers = rowIters.filter((m) => m.index === r);
+          const row = mat.items[r];
+          let slots = "";
+          for (let c = 0; c < nCols; c++) {
+            const onRow = activeRows.has(r);
+            const onCol = activeCols.has(c);
+            let cls = "overlay-slot";
+            if (onRow && onCol) cls += " active";
+            else if (onRow || onCol) cls += " dim-hot";
+            slots +=
+              '<div class="' + cls + '"><div class="cell">' +
+              escapeXml(describe(row.items[c])) +
+              '</div><span class="idx">[' + r + "][" + c + "]</span></div>";
+          }
+          grid +=
+            '<div class="matrix-row">' +
+            '<div class="matrix-row-label' + (rowMarkers.length ? " active" : "") + '">' +
+            rowMarkers
+              .map(
+                (m) =>
+                  '<span class="badge" data-ptr="' +
+                  escapeXml(m.varName) +
+                  '" data-ptr-anchor="center">' +
+                  escapeXml(m.varName) +
+                  "</span>"
+              )
+              .join("") +
+            '<span class="matrix-axis-label">[' + r + "]</span></div>" +
+            slots +
+            "</div>";
+        }
+
+        return (
+          '<div class="overlay-wrap">' +
+          '<div class="box-title">Iterator on top of structure</div>' +
+          '<div class="overlay-headline">' +
+          '<span class="kind-pill">Matrix</span>' +
+          chips +
+          '<span class="over-word">over</span>' +
+          '<span class="chip src">' + escapeXml(iterationInfo.source) + "</span>" +
+          "</div>" +
+          '<div class="overlay-track matrix-track overlay-matrix">' + grid + "</div>" +
+          '<div style="margin-top:0.65rem;font-size:0.72rem;color:var(--muted)">' +
+          escapeXml(
+            miters.map((m) => m.varName + " → " + (m.axis === "row" ? "row" : "col") + " " + m.index).join(" · ") ||
+              iterationInfo.relation ||
+              ""
+          ) +
+          "</div></div>"
+        );
+      }
+    } catch (_) {}
+  }
+
   const kindLabel =
     kind === "array" ? "Array" :
     kind === "linkedlist" ? "Linked list" :
     kind === "tree" ? "Tree" :
-    kind === "graph" ? "Graph" : "Structure";
+    kind === "graph" ? "Graph" :
+    kind === "matrix" ? "Matrix" : "Structure";
 
   const sameSource =
     kind === "array" && iterationInfo.source && iterationInfo.source !== "(range)"

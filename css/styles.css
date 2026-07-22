@@ -1180,11 +1180,122 @@
       flex-direction: column;
       gap: 0.35rem;
       overflow-x: auto;
+      align-items: flex-start;
+      padding-top: 0.35rem;
     }
     .matrix-row {
       display: flex;
       flex-wrap: nowrap;
       gap: 0.35rem;
+      align-items: flex-end;
+    }
+    .matrix-col-headers {
+      align-items: flex-end;
+      padding-left: 0;
+      min-height: 2.4rem;
+    }
+    .matrix-corner {
+      width: 2.6rem;
+      flex-shrink: 0;
+    }
+    .matrix-row-label,
+    .matrix-col-head {
+      position: relative;
+      width: 2.6rem;
+      min-width: 2.6rem;
+      flex-shrink: 0;
+      text-align: center;
+      align-self: center;
+    }
+    .matrix-col-head {
+      width: 3rem;
+      min-width: 3rem;
+      min-height: 2.2rem;
+    }
+    .matrix-row-label .structure-badges,
+    .matrix-col-head .structure-badges {
+      position: relative;
+      left: auto;
+      top: auto;
+      transform: none;
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 0.15rem;
+      margin-bottom: 0.12rem;
+    }
+    .matrix-row-label .structure-badge.iter-row,
+    .matrix-col-head .structure-badge.iter-col {
+      position: relative;
+      left: auto;
+      top: auto;
+      transform: none;
+      display: inline-block;
+      margin-bottom: 0.15rem;
+    }
+    .matrix-row-label .structure-badge.iter-row::after {
+      left: auto;
+      right: -6px;
+      bottom: 50%;
+      transform: translateY(50%);
+      border-top: 5px solid transparent;
+      border-bottom: 5px solid transparent;
+      border-left: 6px solid var(--iter);
+      border-right: none;
+    }
+    .matrix-col-head .structure-badge.iter-col::after {
+      bottom: -6px;
+    }
+    .matrix-axis-label {
+      display: block;
+      font-size: 0.55rem;
+      color: var(--muted);
+      font-family: var(--font-code);
+      letter-spacing: 0.02em;
+    }
+    .matrix-row-label.active .matrix-axis-label,
+    .matrix-col-head.active .matrix-axis-label {
+      color: var(--iter);
+      font-weight: 700;
+    }
+    .structure-slot.matrix-row-hot .structure-cell {
+      background: rgba(244, 143, 177, 0.08);
+      border-color: rgba(244, 143, 177, 0.4);
+    }
+    .structure-slot.matrix-col-hot .structure-cell {
+      background: rgba(168, 199, 250, 0.1);
+      border-color: rgba(168, 199, 250, 0.45);
+    }
+    .structure-slot.matrix-cross .structure-cell,
+    .structure-slot.matrix-row-hot.matrix-col-hot .structure-cell {
+      border-color: var(--iter);
+      background: rgba(244, 143, 177, 0.16);
+      box-shadow:
+        0 0 0 2px rgba(244, 143, 177, 0.35),
+        0 0 14px rgba(244, 143, 177, 0.2);
+    }
+    .inline-array-cell.matrix-axis-hot {
+      background: rgba(244, 143, 177, 0.12);
+      border-color: rgba(244, 143, 177, 0.4);
+    }
+    .overlay-matrix .overlay-slot.dim-hot .cell {
+      border-color: rgba(244, 143, 177, 0.45);
+      background: rgba(244, 143, 177, 0.08);
+    }
+    .overlay-matrix .matrix-row-label .badge,
+    .overlay-matrix .matrix-col-head .badge {
+      position: relative;
+      left: auto;
+      top: auto;
+      transform: none;
+      display: inline-block;
+      margin-bottom: 0.1rem;
+      font-size: 0.58rem;
+      font-weight: 700;
+      padding: 0.12rem 0.35rem;
+      border-radius: 999px;
+      color: #2a0a18;
+      background: var(--iter);
     }
     .matrix-card { border-left-color: var(--accent, #80cbc4); }
     .inline-array-cell {
