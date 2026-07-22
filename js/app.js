@@ -270,6 +270,18 @@ document.getElementById("btnClosePrograms").addEventListener("click", () => prog
 document.getElementById("btnAddProgram").addEventListener("click", addProgramFromEditor);
 btnSaveCurrent.addEventListener("click", saveCurrentProgram);
 
+(function wireSoundVolume() {
+  const slider = document.getElementById("soundVolume");
+  if (!slider || typeof getSoundVolume !== "function") return;
+  slider.value = String(Math.round(getSoundVolume() * 100));
+  const apply = () => {
+    if (typeof initSounds === "function") initSounds();
+    if (typeof setSoundVolume === "function") setSoundVolume(Number(slider.value) / 100);
+  };
+  slider.addEventListener("input", apply);
+  slider.addEventListener("change", apply);
+})();
+
 programNameInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") {
     e.preventDefault();

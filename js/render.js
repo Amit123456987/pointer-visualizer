@@ -533,9 +533,12 @@ function easeOutCubic(t) {
 }
 
 function animatePointerSlides(prev) {
-  if (!prev || prefersReducedMotion()) return;
+  if (!prev) return;
 
   const run = () => {
+    let slid = false;
+    const reduce = prefersReducedMotion();
+
     document.querySelectorAll("[data-ptr]").forEach((el) => {
       const key = el.getAttribute("data-ptr");
       const queue = prev.ptrs && prev.ptrs.get(key);
@@ -545,6 +548,9 @@ function animatePointerSlides(prev) {
       const dx = old.left - r.left;
       const dy = old.top - r.top;
       if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+
+      slid = true;
+      if (reduce) return;
 
       const centered = el.getAttribute("data-ptr-anchor") === "center";
       const from = centered
@@ -570,41 +576,47 @@ function animatePointerSlides(prev) {
       setTimeout(cleanup, 500);
     });
 
-    if (!prev.edges || !prev.edges.size) return;
-    document.querySelectorAll("line[data-edge]").forEach((el) => {
-      const key = el.getAttribute("data-edge");
-      const queue = prev.edges.get(key);
-      if (!queue || !queue.length) return;
-      const from = queue.shift();
-      const to = {
-        x1: +el.getAttribute("x1"),
-        y1: +el.getAttribute("y1"),
-        x2: +el.getAttribute("x2"),
-        y2: +el.getAttribute("y2"),
-      };
-      const moved =
-        Math.hypot(to.x1 - from.x1, to.y1 - from.y1) > 0.5 ||
-        Math.hypot(to.x2 - from.x2, to.y2 - from.y2) > 0.5;
-      if (!moved) return;
+    if (prev.edges && prev.edges.size) {
+      document.querySelectorAll("line[data-edge]").forEach((el) => {
+        const key = el.getAttribute("data-edge");
+        const queue = prev.edges.get(key);
+        if (!queue || !queue.length) return;
+        const from = queue.shift();
+        const to = {
+          x1: +el.getAttribute("x1"),
+          y1: +el.getAttribute("y1"),
+          x2: +el.getAttribute("x2"),
+          y2: +el.getAttribute("y2"),
+        };
+        const moved =
+          Math.hypot(to.x1 - from.x1, to.y1 - from.y1) > 0.5 ||
+          Math.hypot(to.x2 - from.x2, to.y2 - from.y2) > 0.5;
+        if (!moved) return;
 
-      el.setAttribute("x1", from.x1);
-      el.setAttribute("y1", from.y1);
-      el.setAttribute("x2", from.x2);
-      el.setAttribute("y2", from.y2);
+        slid = true;
+        if (reduce) return;
 
-      const duration = 380;
-      const t0 = performance.now();
-      const tick = (now) => {
-        const t = Math.min(1, (now - t0) / duration);
-        const e = easeOutCubic(t);
-        el.setAttribute("x1", from.x1 + (to.x1 - from.x1) * e);
-        el.setAttribute("y1", from.y1 + (to.y1 - from.y1) * e);
-        el.setAttribute("x2", from.x2 + (to.x2 - from.x2) * e);
-        el.setAttribute("y2", from.y2 + (to.y2 - from.y2) * e);
-        if (t < 1) requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
-    });
+        el.setAttribute("x1", from.x1);
+        el.setAttribute("y1", from.y1);
+        el.setAttribute("x2", from.x2);
+        el.setAttribute("y2", from.y2);
+
+        const duration = 380;
+        const t0 = performance.now();
+        const tick = (now) => {
+          const t = Math.min(1, (now - t0) / duration);
+          const e = easeOutCubic(t);
+          el.setAttribute("x1", from.x1 + (to.x1 - from.x1) * e);
+          el.setAttribute("y1", from.y1 + (to.y1 - from.y1) * e);
+          el.setAttribute("x2", from.x2 + (to.x2 - from.x2) * e);
+          el.setAttribute("y2", from.y2 + (to.y2 - from.y2) * e);
+          if (t < 1) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      });
+    }
+
+    if (slid && typeof playPointerSlideSound === "function") playPointerSlideSound();
   };
 
   requestAnimationFrame(() => requestAnimationFrame(run));

@@ -123,6 +123,65 @@
     }
     #language { min-width: 7.5rem; }
     #examples { min-width: 11rem; max-width: 16rem; }
+    .volume-control {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.25rem 0.65rem 0.25rem 0.75rem;
+      border: 1px solid var(--outline);
+      border-radius: var(--radius-xl);
+      background: transparent;
+      color: var(--muted);
+      font-size: 0.75rem;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      user-select: none;
+    }
+    .volume-control:hover {
+      border-color: var(--muted);
+      background: rgba(255, 255, 255, 0.04);
+    }
+    .volume-control .volume-label {
+      font-family: var(--font-ui);
+      text-transform: uppercase;
+      font-size: 0.65rem;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+    }
+    .volume-control input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 5.5rem;
+      height: 0.25rem;
+      border-radius: 999px;
+      background: var(--stroke);
+      outline: none;
+      cursor: pointer;
+      accent-color: var(--accent);
+    }
+    .volume-control input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 0.85rem;
+      height: 0.85rem;
+      border-radius: 50%;
+      background: var(--accent);
+      border: none;
+      box-shadow: var(--elevation-1);
+      cursor: pointer;
+    }
+    .volume-control input[type="range"]::-moz-range-thumb {
+      width: 0.85rem;
+      height: 0.85rem;
+      border-radius: 50%;
+      background: var(--accent);
+      border: none;
+      cursor: pointer;
+    }
+    .volume-control input[type="range"]:focus-visible {
+      outline: 2px solid rgba(168, 199, 250, 0.45);
+      outline-offset: 3px;
+    }
     button:hover {
       background: rgba(255, 255, 255, 0.06);
       border-color: var(--muted);
