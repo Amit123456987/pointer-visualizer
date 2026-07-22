@@ -37,6 +37,27 @@ function resetVm() {
   currentSourceLine = "";
   currentLine = 0;
   errorLine = 0;
+  if (typeof resetCallStackUi === "function") resetCallStackUi();
+}
+
+function makeCallFrame(name, opts) {
+  opts = opts || {};
+  const paramNames = (opts.paramNames || []).slice();
+  const frame = {
+    name: name,
+    locals: opts.locals || new Map(),
+    returnHolder: opts.returnHolder || null,
+    paramNames: paramNames,
+    argSnapshot: new Map(),
+  };
+  if (opts.bindArgs) {
+    for (let i = 0; i < paramNames.length; i++) {
+      const v = opts.bindArgs[i] != null ? opts.bindArgs[i] : VNull();
+      frame.locals.set(paramNames[i], v);
+      frame.argSnapshot.set(paramNames[i], v);
+    }
+  }
+  return frame;
 }
 
 function alloc(typeName, fields) {
@@ -99,6 +120,20 @@ function getVar(name) {
 
 function notifyValueUpdate(kind) {
   if (typeof playUpdateSound === "function") playUpdateSound(kind || "var");
+}
+
+/** True if this array slot was written on the last step */
+function isLastArrayWrite(arrVal, index, name, frame) {
+  if (!lastArrayWrite || lastArrayWrite.index !== index) return false;
+  if (arrVal && lastArrayWrite.arr && lastArrayWrite.arr === arrVal) return true;
+  if (
+    name &&
+    lastArrayWrite.name === name &&
+    (!frame || !lastArrayWrite.frame || lastArrayWrite.frame === frame)
+  ) {
+    return true;
+  }
+  return false;
 }
 
 function setVar(name, val) {
@@ -165,7 +200,9 @@ function evalLValue(node) {
     const idx = evalExpr(node.index);
     if (arr.k !== "arr") fail("Indexing non-array");
     const arrName = node.obj.type === "ident" ? node.obj.name : null;
-    return { kind: "index", arr, index: idx.v, arrName };
+    const index = idx && idx.k === "prim" ? Math.trunc(Number(idx.v)) : Math.trunc(Number(idx && idx.v));
+    if (!Number.isFinite(index)) fail("Invalid array index");
+    return { kind: "index", arr, index, arrName };
   }
   fail("Invalid lvalue");
 }
@@ -193,12 +230,19 @@ function writeLValue(lv, val) {
   }
   if (lv.kind === "index") {
     lv.arr.items[lv.index] = val;
+    let frame = "";
     if (lv.arrName) {
       const loc = lookupVar(lv.arrName);
-      const frame =
-        loc && loc.global ? "<global>" : currentFrame() ? currentFrame().name : "";
-      lastArrayWrite = { name: lv.arrName, index: lv.index, frame };
+      if (loc && loc.global) frame = "<global>";
+      else if (loc && loc.frame && loc.frame.name) frame = loc.frame.name;
+      else if (currentFrame()) frame = currentFrame().name;
     }
+    lastArrayWrite = {
+      name: lv.arrName || null,
+      index: lv.index,
+      frame,
+      arr: lv.arr,
+    };
     notifyValueUpdate("array");
   }
 }
@@ -339,11 +383,13 @@ function evalExpr(node) {
       if (!fn) fail("Unknown function: " + node.name);
 
       if (!steppingActive) {
-        const frame = { name: fn.name, locals: new Map() };
-        callStack.push(frame);
+        const paramNames = fn.params.map((p) => p.name);
+        const bindArgs = [];
         for (let i = 0; i < fn.params.length; i++) {
-          frame.locals.set(fn.params[i].name, evalExpr(node.args[i] || { type: "nullptr" }));
+          bindArgs.push(evalExpr(node.args[i] || { type: "nullptr" }));
         }
+        const frame = makeCallFrame(fn.name, { paramNames: paramNames, bindArgs: bindArgs });
+        callStack.push(frame);
         let ret = VPrim(0);
         try {
           runBlockSync(fn.body);
@@ -434,11 +480,15 @@ function enqueueFunctionCallSteps(callExpr, line, returnHolder, afterSteps) {
 
   ipQueue.push(() => {
     markExec({ line: fn.line || line }, "line " + (fn.line || line || "?") + ": call " + fn.name + "()");
-    const args = callExpr.args.map((a) => evalExpr(a));
-    callStack.push({ name: fn.name, locals: new Map(), returnHolder });
-    for (let i = 0; i < fn.params.length; i++) {
-      currentFrame().locals.set(fn.params[i].name, args[i] || VNull());
-    }
+    const paramNames = fn.params.map((p) => p.name);
+    const bindArgs = callExpr.args.map((a) => evalExpr(a));
+    callStack.push(
+      makeCallFrame(fn.name, {
+        paramNames: paramNames,
+        bindArgs: bindArgs,
+        returnHolder: returnHolder,
+      })
+    );
   });
 
   for (const st of fn.body) enqueueStmt(st);
@@ -519,7 +569,10 @@ function enqueueStmt(st) {
         ipQueue.push(() => {
           markExec(st, "line " + (st.line || "?") + ": return");
           const fr = currentFrame();
-          if (fr && fr.returnHolder) fr.returnHolder.v = holder.v;
+          if (fr && fr.returnHolder) {
+            fr.returnHolder.v = holder.v;
+            fr.didReturn = true;
+          }
           if (callStack.length > 1) {
             throw { __fnReturn: true, fnName: fr.name, value: holder.v };
           }
@@ -533,7 +586,10 @@ function enqueueStmt(st) {
       const v = st.value ? evalExpr(st.value) : VPrim(0);
       if (callStack.length > 1) {
         const fr = currentFrame();
-        if (fr.returnHolder) fr.returnHolder.v = v;
+        if (fr.returnHolder) {
+          fr.returnHolder.v = v;
+          fr.didReturn = true;
+        }
         throw { __fnReturn: true, fnName: fr.name, value: v };
       }
       throw { __return: true, value: v };

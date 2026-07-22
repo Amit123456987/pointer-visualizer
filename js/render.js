@@ -50,7 +50,7 @@ function syncEditorScroll(fromTextarea) {
   }
 }
 
-function renderVarRow(name, val, frameName) {
+function renderVarRow(name, val, frameName, roleOverride) {
   const isIter = typeof isActiveIteratorVar === "function" && isActiveIteratorVar(name);
   const isSrc =
     iterationStack.some((it) => it.source === name) ||
@@ -58,14 +58,17 @@ function renderVarRow(name, val, frameName) {
   const isElem = iterationInfo && iterationInfo.elementVar && name === iterationInfo.elementVar;
   const isArr = val.k === "arr";
   let cls = "var-row";
+  if (roleOverride === "arg") cls += " var-arg";
   if (isIter || isElem) cls += " highlight";
   else if (isSrc) cls += " source-hl";
   else if (isArr) cls += " array-row";
   const kind = val.k === "ptr" ? "pointer" : val.k === "arr" ? "array" : val.k === "null" ? "null" : "value";
-  let role = kind;
-  if (isIter) role = "iterates";
-  else if (isSrc) role = "over";
-  else if (isElem) role = "element";
+  let role = roleOverride || kind;
+  if (!roleOverride) {
+    if (isIter) role = "iterates";
+    else if (isSrc) role = "over";
+    else if (isElem) role = "element";
+  }
   const valCls = val.k === "ptr" ? "var-val ptr" : "var-val";
   let valHtml = escapeXml(describe(val));
   if (isArr && val.items.length <= 16) {
@@ -77,11 +80,17 @@ function renderVarRow(name, val, frameName) {
             ? arrayIteratorsFor(name, val.items.length).filter((m) => m.index === i)
             : [];
         const isWrite =
-          lastArrayWrite &&
-          lastArrayWrite.name === name &&
-          lastArrayWrite.index === i &&
-          lastArrayWrite.frame === frameName;
-        const title = markers.length ? markers.map((m) => m.varName).join(", ") : "";
+          typeof isLastArrayWrite === "function"
+            ? isLastArrayWrite(val, i, name, frameName)
+            : lastArrayWrite &&
+              lastArrayWrite.name === name &&
+              lastArrayWrite.index === i &&
+              lastArrayWrite.frame === frameName;
+        const title = markers.length
+          ? markers.map((m) => m.varName).join(", ")
+          : isWrite
+            ? "wrote [" + i + "]"
+            : "";
         let cellCls = "inline-array-cell";
         if (isWrite) cellCls += " updated";
         else if (markers.length) cellCls += " hot";
@@ -90,7 +99,9 @@ function renderVarRow(name, val, frameName) {
           cellCls +
           '"' +
           (title ? ' title="' + escapeXml(title) + '"' : "") +
+          (isWrite ? ' data-arr-write="1"' : "") +
           ">" +
+          (isWrite ? '<span class="inline-idx">[' + i + "]</span>" : "") +
           escapeXml(describe(it)) +
           "</span>"
         );
@@ -104,34 +115,149 @@ function renderVarRow(name, val, frameName) {
   );
 }
 
+/** Persist expand/collapse across Step refreshes */
+let callStackUi = { collapsed: new Set(), expanded: new Set() };
+
+function resetCallStackUi() {
+  callStackUi = { collapsed: new Set(), expanded: new Set() };
+}
+
+function callFrameKey(depth, name) {
+  return depth + ":" + name;
+}
+
+function isCallFrameExpanded(key, isActive) {
+  if (callStackUi.collapsed.has(key)) return false;
+  if (callStackUi.expanded.has(key)) return true;
+  return true; // default open so args/locals are visible; click to collapse
+}
+
+function toggleCallFrame(key) {
+  if (isCallFrameExpanded(key, false) || callStackUi.expanded.has(key)) {
+    callStackUi.expanded.delete(key);
+    callStackUi.collapsed.add(key);
+  } else {
+    callStackUi.collapsed.delete(key);
+    callStackUi.expanded.add(key);
+  }
+}
+
+function frameSignatureHtml(fr) {
+  const params = fr.paramNames || [];
+  if (!params.length) return '<span class="frame-fn">' + escapeXml(fr.name) + "</span>()";
+  const parts = params.map((p) => {
+    const cur = fr.locals.has(p) ? fr.locals.get(p) : null;
+    return (
+      '<span class="frame-arg-name">' +
+      escapeXml(p) +
+      '</span>=<span class="frame-arg-val">' +
+      escapeXml(cur ? describe(cur) : "?") +
+      "</span>"
+    );
+  });
+  return '<span class="frame-fn">' + escapeXml(fr.name) + "</span>(" + parts.join(", ") + ")";
+}
+
+function renderCallFrame(fr, depth, isActive) {
+  const key = callFrameKey(depth, fr.name);
+  const expanded = isCallFrameExpanded(key, isActive);
+  const paramSet = new Set(fr.paramNames || []);
+  const args = [];
+  const locals = [];
+  for (const [name, val] of fr.locals) {
+    if (paramSet.has(name)) args.push([name, val]);
+    else locals.push([name, val]);
+  }
+
+  let body = "";
+  if (expanded) {
+    if (args.length) {
+      body += '<div class="frame-section-label">Arguments</div>';
+      for (const [name, val] of args) {
+        body += renderVarRow(name, val, fr.name, "arg");
+      }
+    }
+    if (locals.length) {
+      body += '<div class="frame-section-label">Locals</div>';
+      for (const [name, val] of locals) {
+        body += renderVarRow(name, val, fr.name);
+      }
+    }
+    if (fr.didReturn && fr.returnHolder && fr.returnHolder.v != null) {
+      body +=
+        '<div class="frame-section-label">Return</div>' +
+        '<div class="var-row var-return"><span class="var-name">return</span><span class="var-val">' +
+        escapeXml(describe(fr.returnHolder.v)) +
+        '</span><span class="var-kind">return</span></div>';
+    }
+    if (!args.length && !locals.length && !(fr.didReturn && fr.returnHolder)) {
+      body += '<div class="frame-empty">No arguments or locals</div>';
+    }
+  }
+
+  return (
+    '<div class="frame-block' +
+    (isActive ? " frame-active" : "") +
+    (fr.name === "<global>" ? " frame-global" : "") +
+    (expanded ? " frame-expanded" : " frame-collapsed") +
+    '" data-frame-key="' +
+    escapeXml(key) +
+    '">' +
+    '<button type="button" class="frame-header" data-frame-toggle="' +
+    escapeXml(key) +
+    '" aria-expanded="' +
+    (expanded ? "true" : "false") +
+    '">' +
+    '<span class="frame-chevron" aria-hidden="true">' +
+    (expanded ? "▾" : "▸") +
+    "</span>" +
+    '<span class="frame-sig">' +
+    frameSignatureHtml(fr) +
+    "</span>" +
+    '<span class="frame-depth">#' +
+    depth +
+    "</span>" +
+    (isActive ? '<span class="frame-active-tag">executing</span>' : "") +
+    "</button>" +
+    (expanded ? '<div class="frame-body">' + body + "</div>" : "") +
+    "</div>"
+  );
+}
+
+function wireCallStackUi(root) {
+  if (!root) return;
+  root.querySelectorAll("[data-frame-toggle]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      const key = btn.getAttribute("data-frame-toggle");
+      if (!key) return;
+      const wasExpanded = btn.getAttribute("aria-expanded") === "true";
+      if (wasExpanded) {
+        callStackUi.expanded.delete(key);
+        callStackUi.collapsed.add(key);
+      } else {
+        callStackUi.collapsed.delete(key);
+        callStackUi.expanded.add(key);
+      }
+      if (typeof refresh === "function") refresh();
+    });
+  });
+}
+
 function renderMemory(into) {
   let framesHtml = "";
-  if (typeof globals !== "undefined" && globals && globals.size) {
-    framesHtml +=
-      '<div class="frame-block frame-global">' +
-      '<div class="frame-title">frame: global</div>';
-    for (const [name, val] of globals) {
-      framesHtml += renderVarRow(name, val, "<global>");
-    }
-    framesHtml += "</div>";
-  }
-  const frames = callStack.length ? callStack : [{ name: "(empty)", locals: new Map() }];
-  const activeFrame = callStack.length ? callStack[callStack.length - 1] : null;
-  for (const fr of frames) {
-    const isActive = fr === activeFrame && fr.name !== "<global>";
-    framesHtml +=
-      '<div class="frame-block' + (isActive ? " frame-active" : "") + '">' +
-      '<div class="frame-title">' +
-      (isActive ? "▸ " : "") +
-      "frame: " + escapeXml(fr.name) +
-      (isActive ? ' <span class="frame-active-tag">executing</span>' : "") +
-      "</div>";
-    if (!fr.locals.size) {
-      framesHtml += '<div style="color:var(--muted);font-size:0.72rem">No locals</div></div>';
-      continue;
-    }
-    for (const [name, val] of fr.locals) {
-      framesHtml += renderVarRow(name, val, fr.name);
+  const frames = callStack.length ? callStack : [];
+  const activeFrame = frames.length ? frames[frames.length - 1] : null;
+
+  if (!frames.length) {
+    framesHtml = '<div class="frame-empty">Call stack empty — Run or Step a program</div>';
+  } else {
+    framesHtml += '<div class="call-stack-list">';
+    for (let i = 0; i < frames.length; i++) {
+      const fr = frames[i];
+      if (fr.name === "<global>" && (!fr.locals || !fr.locals.size)) continue;
+      const isActive = fr === activeFrame && fr.name !== "<global>";
+      framesHtml += renderCallFrame(fr, i, isActive);
     }
     framesHtml += "</div>";
   }
@@ -183,9 +309,12 @@ function renderMemory(into) {
     (liveStructures ? '<div style="grid-column:1/-1">' + liveStructures + "</div>" : "") +
     '<div class="memory-grid">' +
     (overlay ? '<div style="grid-column:1/-1">' + overlay + "</div>" : "") +
-    '<div class="stack-box"><div class="box-title">Call stack / variables</div>' +
+    '<div class="stack-box"><div class="box-title">Call stack</div>' +
+    '<p class="stack-hint">Click a frame to expand arguments and locals</p>' +
     framesHtml + '</div><div class="heap-box"><div class="box-title">Heap (new objects)</div>' +
     heapHtml + "</div>" + out + "</div>";
+
+  wireCallStackUi(into);
 }
 
 function emptyStateHtml(message) {
@@ -198,8 +327,14 @@ function svgDefs() {
     '<linearGradient id="nodeGrad" x1="0%" y1="0%" x2="0%" y2="100%">' +
     '<stop offset="0%" stop-color="#333"/><stop offset="100%" stop-color="#252525"/>' +
     "</linearGradient>" +
+    '<linearGradient id="ptrGrad" x1="0%" y1="0%" x2="0%" y2="100%">' +
+    '<stop offset="0%" stop-color="#ffb0c8"/><stop offset="100%" stop-color="#f48fb1"/>' +
+    "</linearGradient>" +
     '<filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">' +
     '<feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#000" flood-opacity="0.25"/>' +
+    "</filter>" +
+    '<filter id="ptrGlow" x="-50%" y="-50%" width="200%" height="200%">' +
+    '<feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="#f48fb1" flood-opacity="0.55"/>' +
     "</filter>" +
     '<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">' +
     '<path d="M 0 0 L 10 5 L 0 10 z" fill="#ffb74d"/></marker>' +
@@ -253,21 +388,48 @@ function svgEdge(x1, y1, x2, y2, label, hl, edgeKey) {
 }
 
 function svgPtrBadge(x, y, name) {
+  const label = String(name || "");
+  const w = Math.max(48, Math.min(110, 20 + label.length * 7));
+  const h = 18;
+  const bx = x - w / 2;
+  const by = y - 50;
   return (
     '<g class="ptr-marker" data-ptr="' +
-    escapeXml(name) +
-    '">' +
+    escapeXml(label) +
+    '" filter="url(#ptrGlow)">' +
     '<rect x="' +
-    (x - 28) +
+    bx +
     '" y="' +
-    (y - 42) +
-    '" width="56" height="18" rx="8" fill="#f48fb1"/>' +
-    '<text x="' +
+    by +
+    '" width="' +
+    w +
+    '" height="' +
+    h +
+    '" rx="9" fill="url(#ptrGrad)" stroke="rgba(255,255,255,0.35)" stroke-width="1"/>' +
+    '<path d="M ' +
+    (x - 6) +
+    " " +
+    (by + h) +
+    " L " +
     x +
+    " " +
+    (by + h + 8) +
+    " L " +
+    (x + 6) +
+    " " +
+    (by + h) +
+    ' Z" fill="#f48fb1"/>' +
+    '<circle cx="' +
+    (bx + 10) +
+    '" cy="' +
+    (by + h / 2) +
+    '" r="2.2" fill="#2a0a18"/>' +
+    '<text x="' +
+    (x + 3) +
     '" y="' +
-    (y - 29) +
-    '" text-anchor="middle" fill="#3d1028" font-size="10" font-family="Roboto Mono" font-weight="500">' +
-    escapeXml(name) +
+    (by + 12.5) +
+    '" text-anchor="middle" fill="#2a0a18" font-size="10" font-family="Roboto Mono" font-weight="600">' +
+    escapeXml(label) +
     "</text></g>"
   );
 }

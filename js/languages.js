@@ -46,7 +46,7 @@ function setupProgramEntry(program, langId) {
   const lang = getLanguage(langId || currentLanguageId);
   const entry = lang.entryPoint;
 
-  callStack.push({ name: "<global>", locals: globals });
+  callStack.push(makeCallFrame("<global>", { locals: globals }));
   for (const st of program.statements) enqueueStmt(st);
 
   const main = program.functions.find((f) => f.name === entry);
@@ -54,7 +54,11 @@ function setupProgramEntry(program, langId) {
     ipQueue.push(() => {
       currentLine = main.line || currentLine;
       currentSourceLine = "line " + (main.line || "?") + ": enter " + entry + "()";
-      callStack.push({ name: entry, locals: new Map() });
+      callStack.push(
+        makeCallFrame(entry, {
+          paramNames: (main.params || []).map((p) => p.name),
+        })
+      );
     });
     for (const st of main.body) enqueueStmt(st);
     ipQueue.push(() => {

@@ -306,6 +306,7 @@ function collectAllArrays() {
       name,
       frame,
       label,
+      arr: val,
       items: val.items.map((it, i) => ({ display: describe(it), index: i })),
     });
   }
@@ -370,31 +371,41 @@ function renderLiveStructures() {
     const slots = arr.items.map((it, i) => {
       const markers = arrayIteratorsFor(arr.name, arr.items.length).filter((m) => m.index === i);
       const isWrite =
-        lastArrayWrite &&
-        lastArrayWrite.name === arr.name &&
-        lastArrayWrite.index === i &&
-        lastArrayWrite.frame === arr.frame;
+        typeof isLastArrayWrite === "function"
+          ? isLastArrayWrite(arr.arr, i, arr.name, arr.frame)
+          : lastArrayWrite &&
+            lastArrayWrite.name === arr.name &&
+            lastArrayWrite.index === i &&
+            lastArrayWrite.frame === arr.frame;
       if (isWrite) hasWrite = true;
       let cls = "structure-slot";
       if (isWrite) cls += " updated";
       if (markers.length) cls += " active";
 
       let badge = "";
-      if (isWrite) badge = '<span class="structure-badge write">updated</span>';
-      else if (markers.length) badge = iterationBadgesHtml(markers);
+      if (isWrite) {
+        badge =
+          '<span class="structure-badge write" data-ptr-anchor="center">[' +
+          i +
+          "] updated</span>";
+      } else if (markers.length) {
+        badge = iterationBadgesHtml(markers);
+      }
 
       return (
-        '<div class="' + cls + '">' +
+        '<div class="' + cls + '"' + (isWrite ? ' data-arr-write="1"' : "") + ">" +
         badge +
         '<div class="structure-cell">' + escapeXml(it.display) + "</div>" +
-        '<span class="structure-idx">[' + i + "]</span></div>"
+        '<span class="structure-idx' + (isWrite ? " idx-updated" : "") + '">[' + i + "]</span></div>"
       );
     });
 
     html +=
       '<div class="structure-card array-card' + (hasWrite ? " has-write" : "") + '">' +
       '<div class="structure-head"><span class="structure-name">' + escapeXml(arr.label) + "</span>" +
-      '<span class="structure-meta">' + arr.items.length + " cells</span></div>" +
+      '<span class="structure-meta">' +
+      (hasWrite ? "wrote [" + lastArrayWrite.index + "] · " : "") +
+      arr.items.length + " cells</span></div>" +
       '<div class="structure-track array-track">' + slots.join("") + "</div></div>";
   }
 
@@ -493,14 +504,12 @@ function renderIterationOverlay() {
     const active = markers.length > 0;
     const isWrite =
       kind === "array" &&
-      lastArrayWrite &&
-      iterationInfo.source &&
-      lastArrayWrite.name === iterationInfo.source &&
-      lastArrayWrite.index === i;
+      typeof isLastArrayWrite === "function" &&
+      isLastArrayWrite(null, i, iterationInfo.source, null);
     let badge = "";
     let srcTag = "";
     if (isWrite) {
-      badge = '<span class="badge write-badge">updated</span>';
+      badge = '<span class="badge write-badge">[' + i + "] updated</span>";
     } else if (markers.length) {
       badge = markers
         .map(
@@ -524,7 +533,7 @@ function renderIterationOverlay() {
       srcTag +
       badge +
       '<div class="cell">' + escapeXml(it.display) + "</div>" +
-      '<span class="idx">' +
+      '<span class="idx' + (isWrite ? " idx-updated" : "") + '">' +
       (it.index != null ? "[" + it.index + "]" : "#" + (i + 1)) +
       "</span></div>"
     );
