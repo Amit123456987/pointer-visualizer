@@ -205,4 +205,71 @@ int main() {
     cout << ans;
     return 0;
 }`,
+
+  "Number of LIS — memo DFS (LeetCode 673)": `#include <iostream>
+using namespace std;
+
+// LeetCode 673 — memoized DFS version (class Solution + vector + lambda adapted)
+int nums[5];
+int length[20];
+int count[20];
+
+void calculateDP(int i) {
+    if (length[i] != 0) {
+        return;
+    }
+
+    length[i] = 1;
+    count[i] = 1;
+
+    for (int j = 0; j < i; j = j + 1) {
+        if (nums[j] < nums[i]) {
+            calculateDP(j);
+            if (length[j] + 1 > length[i]) {
+                length[i] = length[j] + 1;
+                count[i] = 0;
+            }
+            if (length[j] + 1 == length[i]) {
+                count[i] = count[i] + count[j];
+            }
+        }
+    }
+}
+
+int findNumberOfLIS(int n) {
+    for (int k = 0; k < n; k = k + 1) {
+        length[k] = 0;
+        count[k] = 0;
+    }
+
+    int maxLength = 0;
+    for (int i = 0; i < n; i = i + 1) {
+        calculateDP(i);
+        if (length[i] > maxLength) {
+            maxLength = length[i];
+        }
+    }
+
+    int result = 0;
+    for (int i = 0; i < n; i = i + 1) {
+        if (length[i] == maxLength) {
+            result = result + count[i];
+        }
+    }
+
+    return result;
+}
+
+int main() {
+    // [1, 3, 5, 4, 7] -> 2 (same as iterative DP)
+    nums[0] = 1;
+    nums[1] = 3;
+    nums[2] = 5;
+    nums[3] = 4;
+    nums[4] = 7;
+
+    int ans = findNumberOfLIS(5);
+    cout << ans;
+    return 0;
+}`,
 };
