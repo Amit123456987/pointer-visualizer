@@ -272,4 +272,253 @@ int main() {
     cout << ans;
     return 0;
 }`,
+
+  "Unique BSTs (Catalan)": `#include <iostream>
+using namespace std;
+
+// Count unique Binary Search Trees for n keys (Catalan numbers).
+// For n = 3 the answer is 5.
+int numTrees(int n)
+{
+    // Base case
+    if (n <= 1)
+        return 1;
+
+    int ans = 0;
+
+    // Try every node as the root.
+    for (int root = 1; root <= n; root = root + 1)
+    {
+        // Count BSTs formed by the left and right subtrees.
+        int leftCount = numTrees(root - 1);
+        int rightCount = numTrees(n - root);
+        ans = ans + leftCount * rightCount;
+    }
+
+    // Return the total number of unique BSTs.
+    return ans;
+}
+
+int main()
+{
+    int n = 3;
+
+    int result = numTrees(n);
+    cout << result;
+
+    return 0;
+}`,
+
+  "Max rectangle in binary matrix": `#include <iostream>
+using namespace std;
+
+// Maximum area rectangle of 1s in a binary matrix (histogram + stack).
+// Original uses vector/stack/max; adapted to plain arrays for this visualizer.
+// Example matrix answer: 8
+int mat[16];
+int heights[8];
+int st[20];
+int top;
+
+int getMaxArea(int m)
+{
+    top = -1;
+    int res = 0;
+
+    for (int i = 0; i < m; i = i + 1)
+    {
+        // Process bars that are taller or equal to the current bar.
+        while (top >= 0 && heights[st[top]] >= heights[i])
+        {
+            int tp = st[top];
+            top = top - 1;
+
+            int width;
+            if (top < 0)
+                width = i;
+            else
+                width = i - st[top] - 1;
+
+            int area = heights[tp] * width;
+            if (area > res)
+                res = area;
+        }
+        top = top + 1;
+        st[top] = i;
+    }
+
+    // Process remaining bars.
+    while (top >= 0)
+    {
+        int tp = st[top];
+        top = top - 1;
+
+        int width;
+        if (top < 0)
+            width = m;
+        else
+            width = m - st[top] - 1;
+
+        int area = heights[tp] * width;
+        if (area > res)
+            res = area;
+    }
+
+    return res;
+}
+
+int maxArea(int n, int m)
+{
+    for (int j = 0; j < m; j = j + 1)
+        heights[j] = 0;
+
+    int ans = 0;
+
+    for (int i = 0; i < n; i = i + 1)
+    {
+        for (int j = 0; j < m; j = j + 1)
+        {
+            if (mat[i * m + j] == 1)
+                heights[j] = heights[j] + 1;
+            else
+                heights[j] = 0;
+        }
+
+        int area = getMaxArea(m);
+        if (area > ans)
+            ans = area;
+    }
+
+    return ans;
+}
+
+int main()
+{
+    // 4x4 matrix:
+    // 0 1 1 0
+    // 1 1 1 1
+    // 1 1 1 1
+    // 1 1 0 0
+    int n = 4;
+    int m = 4;
+
+    mat[0] = 0; mat[1] = 1; mat[2] = 1; mat[3] = 0;
+    mat[4] = 1; mat[5] = 1; mat[6] = 1; mat[7] = 1;
+    mat[8] = 1; mat[9] = 1; mat[10] = 1; mat[11] = 1;
+    mat[12] = 1; mat[13] = 1; mat[14] = 0; mat[15] = 0;
+
+    int result = maxArea(n, m);
+    cout << result;
+
+    return 0;
+}`,
+
+  "Max rectangle (memo widths)": `#include <iostream>
+using namespace std;
+
+// Maximum area rectangle of 1s using consecutive-width memoization.
+// Original uses vector/min/max/ternary; adapted to plain arrays for this visualizer.
+// Example matrix answer: 8
+int mat[16];
+int memo[16];
+
+int maxArea(int n, int m)
+{
+    for (int t = 0; t < n * m; t = t + 1)
+        memo[t] = 0;
+
+    int ans = 0;
+
+    for (int i = 0; i < n; i = i + 1)
+    {
+        for (int j = 0; j < m; j = j + 1)
+        {
+            if (mat[i * m + j] != 0)
+            {
+                // Width of consecutive 1s ending at (i, j).
+                if (j == 0)
+                    memo[i * m + j] = 1;
+                else
+                    memo[i * m + j] = memo[i * m + (j - 1)] + 1;
+
+                int width = memo[i * m + j];
+
+                // Expand upward; keep the minimum width so far.
+                for (int k = i; k >= 0; k = k - 1)
+                {
+                    if (memo[k * m + j] < width)
+                        width = memo[k * m + j];
+
+                    int area = width * (i - k + 1);
+                    if (area > ans)
+                        ans = area;
+                }
+            }
+        }
+    }
+
+    return ans;
+}
+
+int main()
+{
+    // 4x4 matrix:
+    // 0 1 1 0
+    // 1 1 1 1
+    // 1 1 1 1
+    // 1 1 0 0
+    int n = 4;
+    int m = 4;
+
+    mat[0] = 0; mat[1] = 1; mat[2] = 1; mat[3] = 0;
+    mat[4] = 1; mat[5] = 1; mat[6] = 1; mat[7] = 1;
+    mat[8] = 1; mat[9] = 1; mat[10] = 1; mat[11] = 1;
+    mat[12] = 1; mat[13] = 1; mat[14] = 0; mat[15] = 0;
+
+    int result = maxArea(n, m);
+    cout << result;
+
+    return 0;
+}`,
+
+  "Unique BSTs — DP (Catalan)": `#include <iostream>
+using namespace std;
+
+// Count unique Binary Search Trees for n keys using bottom-up DP.
+// Original uses VLA int dp[n+1]; fixed-size array used here for this visualizer.
+// For n = 3 the answer is 5.
+int numTrees(int n)
+{
+    // dp[i] = number of unique BSTs with i nodes.
+    int dp[20];
+
+    // Base cases.
+    dp[0] = 1;
+    dp[1] = 1;
+
+    // Fill dp[] bottom-up.
+    for (int i = 2; i <= n; i = i + 1)
+    {
+        dp[i] = 0;
+
+        // Try every node as the root.
+        for (int j = 1; j <= i; j = j + 1)
+        {
+            // Left: j-1 nodes, right: i-j nodes.
+            dp[i] = dp[i] + dp[j - 1] * dp[i - j];
+        }
+    }
+
+    return dp[n];
+}
+
+int main()
+{
+    int n = 3;
+
+    int result = numTrees(n);
+    cout << result;
+
+    return 0;
+}`,
 };

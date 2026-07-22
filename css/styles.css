@@ -301,6 +301,36 @@
       font-size: 0.74rem;
       border-radius: 7px;
     }
+    .editor-delete {
+      padding: 0.32rem 0.75rem;
+      font-size: 0.74rem;
+      border-radius: 7px;
+      color: var(--danger);
+      border-color: color-mix(in srgb, var(--danger) 40%, var(--outline));
+      background: transparent;
+    }
+    .editor-delete:hover:not(:disabled) {
+      color: var(--danger);
+      border-color: var(--danger);
+      background: color-mix(in srgb, var(--danger) 12%, transparent);
+    }
+    .editor-delete:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .toolbar-delete {
+      color: var(--danger);
+      border-color: color-mix(in srgb, var(--danger) 45%, var(--outline));
+    }
+    .toolbar-delete:hover:not(:disabled) {
+      color: var(--danger);
+      border-color: var(--danger);
+      background: color-mix(in srgb, var(--danger) 12%, transparent);
+    }
+    .toolbar-delete:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
     .code-editor {
       position: relative;
       flex: 1;
@@ -1517,21 +1547,23 @@
       color: var(--muted);
     }
     .program-item-delete {
-      width: 2rem;
+      min-width: 4.25rem;
       height: 2rem;
-      padding: 0;
-      border-radius: 8px;
-      color: var(--muted);
+      padding: 0 0.65rem;
+      border-radius: var(--radius-xl);
+      color: var(--danger);
       background: transparent;
-      border: 1px solid transparent;
-      font-size: 1rem;
+      border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--outline));
+      font-size: 0.72rem;
+      font-weight: 500;
+      letter-spacing: 0.02em;
       line-height: 1;
       flex-shrink: 0;
     }
     .program-item-delete:hover {
       color: var(--danger);
-      border-color: color-mix(in srgb, var(--danger) 45%, var(--stroke));
-      background: color-mix(in srgb, var(--danger) 12%, transparent);
+      border-color: var(--danger);
+      background: color-mix(in srgb, var(--danger) 14%, transparent);
     }
     .programs-empty {
       margin: 0 1.25rem 1.25rem;

@@ -16,6 +16,7 @@ const editorKindBadge = document.getElementById("editorKindBadge");
 const editorStats = document.getElementById("editorStats");
 const editorDirty = document.getElementById("editorDirty");
 const btnSaveCurrent = document.getElementById("btnSaveCurrent");
+const btnDeleteCurrent = document.getElementById("btnDeleteCurrent");
 
 let activeProgram = null;
 let editorSnapshot = { name: "", code: "", isCustom: false };
@@ -54,6 +55,20 @@ function updateEditorChrome() {
   editorKindBadge.textContent = isCustom ? "My program" : "Example";
   editorKindBadge.classList.toggle("custom", !!isCustom);
   btnSaveCurrent.textContent = isCustom ? "Save changes" : "Save as mine";
+  const canDelete = !!(activeProgram && getProgramEntry(activeProgram));
+  if (btnDeleteCurrent) {
+    btnDeleteCurrent.disabled = !canDelete;
+    btnDeleteCurrent.title = isCustom
+      ? 'Delete saved program "' + activeProgram + '"'
+      : activeProgram
+        ? 'Remove example "' + activeProgram + '" from the list'
+        : "Select a program to delete";
+  }
+  const toolbarDelete = document.getElementById("btnDeleteProgram");
+  if (toolbarDelete) {
+    toolbarDelete.disabled = !canDelete;
+    toolbarDelete.title = btnDeleteCurrent ? btnDeleteCurrent.title : "Delete program";
+  }
 
   if (document.activeElement !== programTitleInput) {
     programTitleInput.value = activeProgram || "";
@@ -184,6 +199,65 @@ function saveCurrentProgram() {
   }
 }
 
+function confirmAndDeleteProgram(name) {
+  if (!name) return false;
+  const isCustom = isCustomProgram(name);
+  const isBuiltin = isBuiltinProgram(name);
+
+  if (!isCustom && !isBuiltin) return false;
+
+  if (isCustom) {
+    const ok = window.confirm(
+      'Delete saved program "' + name + '"?\n\nThis cannot be undone.'
+    );
+    if (!ok) return false;
+    deleteCustomProgram(name);
+  } else {
+    const ok = window.confirm(
+      'Remove example "' + name + '" from the program list?\n\nYou can still paste the code later; this only hides it in the dropdown.'
+    );
+    if (!ok) return false;
+    hideBuiltinProgram(name, currentLanguageId);
+  }
+
+  if (activeProgram === name) {
+    activeProgram = null;
+    const { builtin, custom } = getAllProgramNames();
+    const next = custom[0] ?? builtin[0];
+    if (next) {
+      loadProgram(next);
+      populateProgramSelect(next);
+    } else {
+      codeEl.value = "";
+      programTitleInput.value = "";
+      markEditorSnapshot("", "", false);
+      populateProgramSelect();
+      renderCodeHighlight();
+      resetVm();
+      refresh();
+    }
+  } else {
+    populateProgramSelect(activeProgram);
+  }
+
+  if (programsDialog.open) renderProgramsPanel();
+  const label = isCustom ? "Deleted" : "Removed";
+  showProgramsMessage(label + ' "' + name + '".', "ok");
+  setStatus(label + ' program "' + name + '".');
+  updateEditorChrome();
+  return true;
+}
+
+function deleteActiveProgram() {
+  const name = activeProgram || (sel && sel.value) || "";
+  if (!name) {
+    setStatus("Select a program to delete first.", true);
+    return;
+  }
+  if (!activeProgram) activeProgram = name;
+  confirmAndDeleteProgram(name);
+}
+
 function renderProgramsPanel() {
   const custom = Object.entries(loadCustomPrograms())
     .filter(([, entry]) => entry.language === currentLanguageId)
@@ -214,15 +288,10 @@ function renderProgramsPanel() {
     del.className = "program-item-delete";
     del.title = 'Delete "' + name + '"';
     del.setAttribute("aria-label", 'Delete "' + name + '"');
-    del.textContent = "×";
+    del.textContent = "Delete";
     del.addEventListener("click", (e) => {
       e.stopPropagation();
-      deleteCustomProgram(name);
-      if (activeProgram === name) activeProgram = null;
-      populateProgramSelect();
-      renderProgramsPanel();
-      showProgramsMessage('Deleted "' + name + '".', "ok");
-      setStatus('Deleted program "' + name + '".');
+      confirmAndDeleteProgram(name);
     });
 
     item.append(main, del);
@@ -269,6 +338,13 @@ document.getElementById("btnPrograms").addEventListener("click", openProgramsPan
 document.getElementById("btnClosePrograms").addEventListener("click", () => programsDialog.close());
 document.getElementById("btnAddProgram").addEventListener("click", addProgramFromEditor);
 btnSaveCurrent.addEventListener("click", saveCurrentProgram);
+if (btnDeleteCurrent) {
+  btnDeleteCurrent.addEventListener("click", deleteActiveProgram);
+}
+const btnDeleteProgram = document.getElementById("btnDeleteProgram");
+if (btnDeleteProgram) {
+  btnDeleteProgram.addEventListener("click", deleteActiveProgram);
+}
 
 (function wireSoundVolume() {
   const slider = document.getElementById("soundVolume");

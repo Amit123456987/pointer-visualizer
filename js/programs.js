@@ -108,6 +108,51 @@ function getAllProgramNames(langId) {
   const custom = Object.entries(loadCustomPrograms())
     .filter(([, entry]) => entry.language === language)
     .map(([name]) => name);
-  const builtin = Object.keys(getLanguageExamples(language));
+  const hidden = getHiddenBuiltins(language);
+  const builtin = Object.keys(getLanguageExamples(language)).filter(
+    (name) => !hidden.has(name)
+  );
   return { builtin, custom };
+}
+
+const HIDDEN_BUILTINS_KEY = "pv-hidden-builtin-programs";
+
+function loadHiddenBuiltinsRaw() {
+  try {
+    const raw = localStorage.getItem(HIDDEN_BUILTINS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveHiddenBuiltinsRaw(data) {
+  localStorage.setItem(HIDDEN_BUILTINS_KEY, JSON.stringify(data));
+}
+
+function getHiddenBuiltins(langId) {
+  const language = langId || currentLanguageId;
+  const raw = loadHiddenBuiltinsRaw();
+  const list = Array.isArray(raw[language]) ? raw[language] : [];
+  return new Set(list.filter((n) => typeof n === "string"));
+}
+
+function hideBuiltinProgram(name, langId) {
+  const language = langId || currentLanguageId;
+  const raw = loadHiddenBuiltinsRaw();
+  const list = Array.isArray(raw[language]) ? raw[language].slice() : [];
+  if (!list.includes(name)) list.push(name);
+  raw[language] = list;
+  saveHiddenBuiltinsRaw(raw);
+  return true;
+}
+
+function unhideBuiltinProgram(name, langId) {
+  const language = langId || currentLanguageId;
+  const raw = loadHiddenBuiltinsRaw();
+  const list = Array.isArray(raw[language]) ? raw[language].slice() : [];
+  raw[language] = list.filter((n) => n !== name);
+  saveHiddenBuiltinsRaw(raw);
 }

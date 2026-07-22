@@ -22,6 +22,9 @@
         <span class="programs-trigger-icon" aria-hidden="true">+</span>
         Programs
       </button>
+      <button type="button" id="btnDeleteProgram" class="toolbar-delete" title="Delete or remove the selected program">
+        Delete
+      </button>
       <button type="button" id="btnRun" class="primary">Run</button>
       <button type="button" id="btnStep">Step</button>
       <button type="button" id="btnReset">Reset</button>
@@ -61,6 +64,7 @@
             <span id="editorDirty" class="editor-dirty" hidden>● Unsaved changes</span>
             <div class="editor-actions">
               <button type="button" id="btnSaveCurrent" class="editor-save primary">Save</button>
+              <button type="button" id="btnDeleteCurrent" class="editor-delete" title="Delete or remove the current program">Delete</button>
             </div>
           </div>
         </header>
@@ -94,7 +98,7 @@
       <header class="programs-header">
         <div>
           <h2>My programs</h2>
-          <p class="programs-subtitle">Open a saved program in the editor, or save your current edits</p>
+          <p class="programs-subtitle">Open, save, or delete your programs for the current language</p>
         </div>
         <button type="button" id="btnClosePrograms" class="programs-close" aria-label="Close">&times;</button>
       </header>
