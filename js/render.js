@@ -253,7 +253,8 @@ function renderMemory(into) {
     framesHtml = '<div class="frame-empty">Call stack empty — Run or Step a program</div>';
   } else {
     framesHtml += '<div class="call-stack-list">';
-    for (let i = 0; i < frames.length; i++) {
+    // Newest call on top (top of stack first)
+    for (let i = frames.length - 1; i >= 0; i--) {
       const fr = frames[i];
       if (fr.name === "<global>" && (!fr.locals || !fr.locals.size)) continue;
       const isActive = fr === activeFrame && fr.name !== "<global>";
@@ -310,7 +311,7 @@ function renderMemory(into) {
     '<div class="memory-grid">' +
     (overlay ? '<div style="grid-column:1/-1">' + overlay + "</div>" : "") +
     '<div class="stack-box"><div class="box-title">Call stack</div>' +
-    '<p class="stack-hint">Click a frame to expand arguments and locals</p>' +
+    '<p class="stack-hint">Latest call on top — click a frame to expand arguments and locals</p>' +
     framesHtml + '</div><div class="heap-box"><div class="box-title">Heap (new objects)</div>' +
     heapHtml + "</div>" + out + "</div>";
 
