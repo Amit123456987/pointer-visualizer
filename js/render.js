@@ -56,13 +56,22 @@ function renderVarRow(name, val, frameName, roleOverride) {
     iterationStack.some((it) => it.source === name) ||
     (iterationInfo && name === iterationInfo.source);
   const isElem = iterationInfo && iterationInfo.elementVar && name === iterationInfo.elementVar;
+  const isMatrix = typeof isMatrixValue === "function" && isMatrixValue(val);
   const isArr = val.k === "arr";
   let cls = "var-row";
   if (roleOverride === "arg") cls += " var-arg";
   if (isIter || isElem) cls += " highlight";
   else if (isSrc) cls += " source-hl";
   else if (isArr) cls += " array-row";
-  const kind = val.k === "ptr" ? "pointer" : val.k === "arr" ? "array" : val.k === "null" ? "null" : "value";
+  const kind = isMatrix
+    ? "matrix"
+    : val.k === "ptr"
+      ? "pointer"
+      : val.k === "arr"
+        ? "array"
+        : val.k === "null"
+          ? "null"
+          : "value";
   let role = roleOverride || kind;
   if (!roleOverride) {
     if (isIter) role = "iterates";
@@ -71,7 +80,36 @@ function renderVarRow(name, val, frameName, roleOverride) {
   }
   const valCls = val.k === "ptr" ? "var-val ptr" : "var-val";
   let valHtml = escapeXml(describe(val));
-  if (isArr && val.items.length <= 16) {
+  if (isMatrix && val.items.length <= 12) {
+    valHtml =
+      '<span class="inline-matrix">' +
+      val.items
+        .map((row, r) => {
+          const cells = (row.items || [])
+            .map((it, c) => {
+              const isWrite =
+                typeof isLastArrayWrite === "function"
+                  ? isLastArrayWrite(row, c, name, frameName, r)
+                  : false;
+              let cellCls = "inline-array-cell";
+              if (isWrite) cellCls += " updated";
+              return (
+                '<span class="' +
+                cellCls +
+                '"' +
+                (isWrite ? ' title="wrote [' + r + "][" + c + ']" data-arr-write="1"' : "") +
+                ">" +
+                (isWrite ? '<span class="inline-idx">[' + r + "][" + c + "]</span>" : "") +
+                escapeXml(describe(it)) +
+                "</span>"
+              );
+            })
+            .join("");
+          return '<span class="inline-matrix-row">' + cells + "</span>";
+        })
+        .join("") +
+      "</span>";
+  } else if (isArr && !isMatrix && val.items.length <= 16) {
     valHtml =
       '<span class="inline-array">' +
       val.items.map((it, i) => {

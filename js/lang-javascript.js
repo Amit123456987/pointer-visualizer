@@ -76,6 +76,91 @@ class TreeNode {
     }
     return 0;
 }`,
+
+  "Max rectangle in binary matrix": `// Maximum area rectangle of 1s (histogram + stack).
+// Adapted for this visualizer: no Math.max / Array.push / ternary / ===.
+// Example matrix answer: 8
+
+function getMaxArea(heights, m) {
+    let st = [0, 0, 0, 0, 0, 0, 0, 0];
+    let top = -1;
+    let res = 0;
+
+    for (let i = 0; i < m; i = i + 1) {
+        while (top >= 0 && heights[st[top]] >= heights[i]) {
+            let tp = st[top];
+            top = top - 1;
+
+            let width;
+            if (top < 0) {
+                width = i;
+            } else {
+                width = i - st[top] - 1;
+            }
+
+            let area = heights[tp] * width;
+            if (area > res) {
+                res = area;
+            }
+        }
+        top = top + 1;
+        st[top] = i;
+    }
+
+    while (top >= 0) {
+        let tp = st[top];
+        top = top - 1;
+
+        let width;
+        if (top < 0) {
+            width = m;
+        } else {
+            width = m - st[top] - 1;
+        }
+
+        let area = heights[tp] * width;
+        if (area > res) {
+            res = area;
+        }
+    }
+
+    return res;
+}
+
+function maxArea(mat, n, m) {
+    let heights = [0, 0, 0, 0];
+    let ans = 0;
+
+    for (let i = 0; i < n; i = i + 1) {
+        for (let j = 0; j < m; j = j + 1) {
+            if (mat[i][j] == 1) {
+                heights[j] = heights[j] + 1;
+            } else {
+                heights[j] = 0;
+            }
+        }
+
+        let area = getMaxArea(heights, m);
+        if (area > ans) {
+            ans = area;
+        }
+    }
+
+    return ans;
+}
+
+function main() {
+    let mat = [
+        [0, 1, 1, 0],
+        [1, 1, 1, 1],
+        [1, 1, 1, 1],
+        [1, 1, 0, 0]
+    ];
+
+    let result = maxArea(mat, 4, 4);
+    console.log(result);
+    return 0;
+}`,
 };
 
 const JS_KEYWORDS = new Set([

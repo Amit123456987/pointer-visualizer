@@ -55,14 +55,12 @@ function updateEditorChrome() {
   editorKindBadge.textContent = isCustom ? "My program" : "Example";
   editorKindBadge.classList.toggle("custom", !!isCustom);
   btnSaveCurrent.textContent = isCustom ? "Save changes" : "Save as mine";
-  const canDelete = !!(activeProgram && getProgramEntry(activeProgram));
+  const canDelete = !!(activeProgram && isCustomProgram(activeProgram));
   if (btnDeleteCurrent) {
     btnDeleteCurrent.disabled = !canDelete;
-    btnDeleteCurrent.title = isCustom
+    btnDeleteCurrent.title = canDelete
       ? 'Delete saved program "' + activeProgram + '"'
-      : activeProgram
-        ? 'Remove example "' + activeProgram + '" from the list'
-        : "Select a program to delete";
+      : "Only saved My programs can be deleted";
   }
   const toolbarDelete = document.getElementById("btnDeleteProgram");
   if (toolbarDelete) {
@@ -201,24 +199,20 @@ function saveCurrentProgram() {
 
 function confirmAndDeleteProgram(name) {
   if (!name) return false;
-  const isCustom = isCustomProgram(name);
-  const isBuiltin = isBuiltinProgram(name);
 
-  if (!isCustom && !isBuiltin) return false;
-
-  if (isCustom) {
-    const ok = window.confirm(
-      'Delete saved program "' + name + '"?\n\nThis cannot be undone.'
+  if (!isCustomProgram(name)) {
+    window.alert(
+      '"' + name + '" is a built-in example and cannot be deleted.\n\nSave a copy with "Save as mine" if you want a removable program.'
     );
-    if (!ok) return false;
-    deleteCustomProgram(name);
-  } else {
-    const ok = window.confirm(
-      'Remove example "' + name + '" from the program list?\n\nYou can still paste the code later; this only hides it in the dropdown.'
-    );
-    if (!ok) return false;
-    hideBuiltinProgram(name, currentLanguageId);
+    return false;
   }
+
+  const ok = window.confirm(
+    'Delete saved program "' + name + '"?\n\nThis cannot be undone.'
+  );
+  if (!ok) return false;
+
+  deleteCustomProgram(name);
 
   if (activeProgram === name) {
     activeProgram = null;
@@ -241,9 +235,8 @@ function confirmAndDeleteProgram(name) {
   }
 
   if (programsDialog.open) renderProgramsPanel();
-  const label = isCustom ? "Deleted" : "Removed";
-  showProgramsMessage(label + ' "' + name + '".', "ok");
-  setStatus(label + ' program "' + name + '".');
+  showProgramsMessage('Deleted "' + name + '".', "ok");
+  setStatus('Deleted program "' + name + '".');
   updateEditorChrome();
   return true;
 }
@@ -330,6 +323,9 @@ function addProgramFromEditor() {
 
 populateLanguageSelect();
 applyLanguageUi();
+try {
+  localStorage.removeItem("pv-hidden-builtin-programs");
+} catch (_) {}
 populateProgramSelect();
 sel.addEventListener("change", () => loadProgram(sel.value));
 if (langSel) langSel.addEventListener("change", () => switchLanguage(langSel.value));

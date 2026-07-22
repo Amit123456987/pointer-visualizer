@@ -64,6 +64,17 @@
       font-weight: 400;
     }
     .toolbar { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+    .toolbar-sep {
+      width: 1px;
+      align-self: stretch;
+      min-height: 1.5rem;
+      margin: 0 0.25rem;
+      background: var(--stroke);
+      flex-shrink: 0;
+    }
+    .toolbar .run-btn {
+      margin-right: 1.25rem;
+    }
     button, select {
       font-family: var(--font-ui);
       font-size: 0.8125rem;
@@ -1153,6 +1164,29 @@
       flex-wrap: wrap;
       gap: 0.25rem;
     }
+    .inline-matrix {
+      display: inline-flex;
+      flex-direction: column;
+      gap: 0.2rem;
+      vertical-align: middle;
+    }
+    .inline-matrix-row {
+      display: inline-flex;
+      flex-wrap: nowrap;
+      gap: 0.2rem;
+    }
+    .matrix-track {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      overflow-x: auto;
+    }
+    .matrix-row {
+      display: flex;
+      flex-wrap: nowrap;
+      gap: 0.35rem;
+    }
+    .matrix-card { border-left-color: var(--accent, #80cbc4); }
     .inline-array-cell {
       display: inline-block;
       position: relative;

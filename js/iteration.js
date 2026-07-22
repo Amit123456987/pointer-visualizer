@@ -302,12 +302,22 @@ function collectAllArrays() {
     if (seen.has(key)) return;
     seen.add(key);
     const label = frame === "<global>" ? name + " (global)" : frame === "main" ? name : name + " · " + frame;
+    const matrix = typeof isMatrixValue === "function" && isMatrixValue(val);
     out.push({
       name,
       frame,
       label,
       arr: val,
-      items: val.items.map((it, i) => ({ display: describe(it), index: i })),
+      matrix,
+      items: matrix
+        ? null
+        : val.items.map((it, i) => ({ display: describe(it), index: i })),
+      rows: matrix
+        ? val.items.map((row, r) => ({
+            arr: row,
+            cells: (row.items || []).map((it, c) => ({ display: describe(it), index: c, row: r })),
+          }))
+        : null,
     });
   }
 
@@ -368,6 +378,52 @@ function renderLiveStructures() {
 
   for (const arr of arrays) {
     let hasWrite = false;
+
+    if (arr.matrix) {
+      const rowHtml = arr.rows
+        .map((row, r) => {
+          const slots = row.cells.map((it, c) => {
+            const isWrite =
+              typeof isLastArrayWrite === "function"
+                ? isLastArrayWrite(row.arr, c, arr.name, arr.frame, r)
+                : false;
+            if (isWrite) hasWrite = true;
+            let cls = "structure-slot";
+            if (isWrite) cls += " updated";
+            let badge = "";
+            if (isWrite) {
+              badge =
+                '<span class="structure-badge write" data-ptr-anchor="center">[' +
+                r +
+                "][" +
+                c +
+                "] updated</span>";
+            }
+            return (
+              '<div class="' + cls + '"' + (isWrite ? ' data-arr-write="1"' : "") + ">" +
+              badge +
+              '<div class="structure-cell">' + escapeXml(it.display) + "</div>" +
+              '<span class="structure-idx' + (isWrite ? " idx-updated" : "") + '">[' + r + "][" + c + "]</span></div>"
+            );
+          });
+          return '<div class="matrix-row">' + slots.join("") + "</div>";
+        })
+        .join("");
+
+      const rows = arr.rows.length;
+      const cols = rows ? arr.rows[0].cells.length : 0;
+      html +=
+        '<div class="structure-card array-card matrix-card' + (hasWrite ? " has-write" : "") + '">' +
+        '<div class="structure-head"><span class="structure-name">' + escapeXml(arr.label) + "</span>" +
+        '<span class="structure-meta">' +
+        (hasWrite && lastArrayWrite
+          ? "wrote [" + lastArrayWrite.row + "][" + lastArrayWrite.index + "] · "
+          : "") +
+        rows + "×" + cols + " matrix</span></div>" +
+        '<div class="structure-track matrix-track">' + rowHtml + "</div></div>";
+      continue;
+    }
+
     const slots = arr.items.map((it, i) => {
       const markers = arrayIteratorsFor(arr.name, arr.items.length).filter((m) => m.index === i);
       const isWrite =

@@ -72,6 +72,24 @@ function VPtr(addr) { return { k: "ptr", addr }; } // addr is heap id or {frame,
 function VNull() { return { k: "null" }; }
 function VArr(items) { return { k: "arr", items }; }
 
+function makeZeroArray(size) {
+  return VArr(Array.from({ length: size }, () => VPrim(0)));
+}
+
+function makeZeroMatrix(rows, cols) {
+  return VArr(Array.from({ length: rows }, () => makeZeroArray(cols)));
+}
+
+function allocArrayValue(st) {
+  if (st.arraySize != null && st.arraySize2 != null) {
+    return makeZeroMatrix(st.arraySize, st.arraySize2);
+  }
+  if (st.arraySize != null) {
+    return makeZeroArray(st.arraySize);
+  }
+  return null;
+}
+
 function describe(val) {
   if (!val) return "undefined";
   if (val.k === "prim") return JSON.stringify(val.v);
@@ -123,8 +141,13 @@ function notifyValueUpdate(kind) {
 }
 
 /** True if this array slot was written on the last step */
-function isLastArrayWrite(arrVal, index, name, frame) {
+function isLastArrayWrite(arrVal, index, name, frame, row) {
   if (!lastArrayWrite || lastArrayWrite.index !== index) return false;
+  if (lastArrayWrite.row != null) {
+    if (row == null || lastArrayWrite.row !== row) return false;
+  } else if (row != null) {
+    return false;
+  }
   if (arrVal && lastArrayWrite.arr && lastArrayWrite.arr === arrVal) return true;
   if (
     name &&
@@ -134,6 +157,15 @@ function isLastArrayWrite(arrVal, index, name, frame) {
     return true;
   }
   return false;
+}
+
+function isMatrixValue(val) {
+  return (
+    val &&
+    val.k === "arr" &&
+    val.items.length > 0 &&
+    val.items.every((it) => it && it.k === "arr")
+  );
 }
 
 function setVar(name, val) {
@@ -199,10 +231,17 @@ function evalLValue(node) {
     const arr = evalExpr(node.obj);
     const idx = evalExpr(node.index);
     if (arr.k !== "arr") fail("Indexing non-array");
-    const arrName = node.obj.type === "ident" ? node.obj.name : null;
+    let arrName = null;
+    let row = null;
+    if (node.obj.type === "ident") arrName = node.obj.name;
+    else if (node.obj.type === "index" && node.obj.obj.type === "ident") {
+      arrName = node.obj.obj.name;
+      const rowVal = evalExpr(node.obj.index);
+      if (rowVal && rowVal.k === "prim") row = Math.trunc(Number(rowVal.v));
+    }
     const index = idx && idx.k === "prim" ? Math.trunc(Number(idx.v)) : Math.trunc(Number(idx && idx.v));
     if (!Number.isFinite(index)) fail("Invalid array index");
-    return { kind: "index", arr, index, arrName };
+    return { kind: "index", arr, index, arrName, row };
   }
   fail("Invalid lvalue");
 }
@@ -242,6 +281,7 @@ function writeLValue(lv, val) {
       index: lv.index,
       frame,
       arr: lv.arr,
+      row: lv.row != null ? lv.row : null,
     };
     notifyValueUpdate("array");
   }
@@ -260,6 +300,16 @@ function evalExpr(node) {
       break;
     }
     case "binary": {
+      if (node.op === "&&") {
+        const l = evalExpr(node.left);
+        if (!truthy(l)) return VPrim(false);
+        return VPrim(truthy(evalExpr(node.right)));
+      }
+      if (node.op === "||") {
+        const l = evalExpr(node.left);
+        if (truthy(l)) return VPrim(true);
+        return VPrim(truthy(evalExpr(node.right)));
+      }
       const l = evalExpr(node.left);
       const r = evalExpr(node.right);
       const lv = l.k === "prim" ? l.v : (l.k === "null" ? 0 : l);
@@ -284,8 +334,6 @@ function evalExpr(node) {
           const eq = evalExpr({ type: "binary", op: "==", left: node.left, right: node.right });
           return VPrim(!eq.v);
         }
-        case "&&": return VPrim(truthy(l) && truthy(r));
-        case "||": return VPrim(truthy(l) || truthy(r));
       }
       break;
     }
@@ -521,9 +569,9 @@ function enqueueStmt(st) {
     ipQueue.push(() => {
       markExec(st, "line " + (st.line || "?") + ": declare " + st.name);
       let val = VPrim(0);
-      if (st.arraySize != null) {
-        val = VArr(Array.from({ length: st.arraySize }, () => VPrim(0)));
-      } else if (st.typeName.stars > 0) {
+      const arrVal = allocArrayValue(st);
+      if (arrVal) val = arrVal;
+      else if (st.typeName.stars > 0) {
         val = VNull();
       } else if (structs.has(st.typeName.base)) {
         val = VNull();
@@ -683,7 +731,8 @@ function execStmtSync(st) {
   if (!st || st.type === "noop") return;
   if (st.type === "vardecl") {
     let val = VPrim(0);
-    if (st.arraySize != null) val = VArr(Array.from({ length: st.arraySize }, () => VPrim(0)));
+    const arrVal = allocArrayValue(st);
+    if (arrVal) val = arrVal;
     else if (st.typeName.stars > 0) val = VNull();
     if (st.init) val = evalExpr(st.init);
     declVar(st.name, val);

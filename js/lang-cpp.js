@@ -14,7 +14,7 @@ registerLanguage({
     'structs/classes · pointers (<code style="color:var(--pointer)">*</code>, <code style="color:var(--pointer)">&amp;</code>, <code style="color:var(--pointer)">-&gt;</code>) · ' +
     '<code style="color:var(--value)">new</code>/<code style="color:var(--value)">nullptr</code> · ' +
     '<code style="color:var(--value)">for</code>/<code style="color:var(--value)">while</code>/<code style="color:var(--value)">if</code> · ' +
-    'functions + <code style="color:var(--value)">main</code> · arrays · ' +
+    'functions + <code style="color:var(--value)">main</code> · arrays / 2D arrays · ' +
     '<code style="color:var(--value)">cout</code> · ints/doubles/bools/strings. ' +
     "STL containers, templates, and full OOP are not simulated.",
   syntax: {

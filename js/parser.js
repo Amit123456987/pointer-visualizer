@@ -204,14 +204,19 @@ function parse(tokens) {
     const ty = parseType();
     const name = expect("id").value;
     let arraySize = null;
+    let arraySize2 = null;
     if (match("op", "[")) {
       arraySize = expect("number").value;
       expect("op", "]");
+      if (match("op", "[")) {
+        arraySize2 = expect("number").value;
+        expect("op", "]");
+      }
     }
     let init = null;
     if (match("op", "=")) init = parseExpr();
     expect("op", ";");
-    return { type: "vardecl", typeName: ty, name, init, arraySize, line };
+    return { type: "vardecl", typeName: ty, name, init, arraySize, arraySize2, line };
   }
 
   function parseStmt() {

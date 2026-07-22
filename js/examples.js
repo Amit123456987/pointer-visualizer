@@ -313,9 +313,9 @@ int main()
 using namespace std;
 
 // Maximum area rectangle of 1s in a binary matrix (histogram + stack).
-// Original uses vector/stack/max; adapted to plain arrays for this visualizer.
+// Original uses vector/stack/max; adapted to plain 2D arrays for this visualizer.
 // Example matrix answer: 8
-int mat[16];
+int mat[4][4];
 int heights[8];
 int st[20];
 int top;
@@ -378,7 +378,7 @@ int maxArea(int n, int m)
     {
         for (int j = 0; j < m; j = j + 1)
         {
-            if (mat[i * m + j] == 1)
+            if (mat[i][j] == 1)
                 heights[j] = heights[j] + 1;
             else
                 heights[j] = 0;
@@ -402,10 +402,10 @@ int main()
     int n = 4;
     int m = 4;
 
-    mat[0] = 0; mat[1] = 1; mat[2] = 1; mat[3] = 0;
-    mat[4] = 1; mat[5] = 1; mat[6] = 1; mat[7] = 1;
-    mat[8] = 1; mat[9] = 1; mat[10] = 1; mat[11] = 1;
-    mat[12] = 1; mat[13] = 1; mat[14] = 0; mat[15] = 0;
+    mat[0][0] = 0; mat[0][1] = 1; mat[0][2] = 1; mat[0][3] = 0;
+    mat[1][0] = 1; mat[1][1] = 1; mat[1][2] = 1; mat[1][3] = 1;
+    mat[2][0] = 1; mat[2][1] = 1; mat[2][2] = 1; mat[2][3] = 1;
+    mat[3][0] = 1; mat[3][1] = 1; mat[3][2] = 0; mat[3][3] = 0;
 
     int result = maxArea(n, m);
     cout << result;
@@ -417,15 +417,18 @@ int main()
 using namespace std;
 
 // Maximum area rectangle of 1s using consecutive-width memoization.
-// Original uses vector/min/max/ternary; adapted to plain arrays for this visualizer.
+// Original uses vector/min/max/ternary; adapted to plain 2D arrays for this visualizer.
 // Example matrix answer: 8
-int mat[16];
-int memo[16];
+int mat[4][4];
+int memo[4][4];
 
 int maxArea(int n, int m)
 {
-    for (int t = 0; t < n * m; t = t + 1)
-        memo[t] = 0;
+    for (int i = 0; i < n; i = i + 1)
+    {
+        for (int j = 0; j < m; j = j + 1)
+            memo[i][j] = 0;
+    }
 
     int ans = 0;
 
@@ -433,21 +436,21 @@ int maxArea(int n, int m)
     {
         for (int j = 0; j < m; j = j + 1)
         {
-            if (mat[i * m + j] != 0)
+            if (mat[i][j] != 0)
             {
                 // Width of consecutive 1s ending at (i, j).
                 if (j == 0)
-                    memo[i * m + j] = 1;
+                    memo[i][j] = 1;
                 else
-                    memo[i * m + j] = memo[i * m + (j - 1)] + 1;
+                    memo[i][j] = memo[i][j - 1] + 1;
 
-                int width = memo[i * m + j];
+                int width = memo[i][j];
 
                 // Expand upward; keep the minimum width so far.
                 for (int k = i; k >= 0; k = k - 1)
                 {
-                    if (memo[k * m + j] < width)
-                        width = memo[k * m + j];
+                    if (memo[k][j] < width)
+                        width = memo[k][j];
 
                     int area = width * (i - k + 1);
                     if (area > ans)
@@ -470,10 +473,10 @@ int main()
     int n = 4;
     int m = 4;
 
-    mat[0] = 0; mat[1] = 1; mat[2] = 1; mat[3] = 0;
-    mat[4] = 1; mat[5] = 1; mat[6] = 1; mat[7] = 1;
-    mat[8] = 1; mat[9] = 1; mat[10] = 1; mat[11] = 1;
-    mat[12] = 1; mat[13] = 1; mat[14] = 0; mat[15] = 0;
+    mat[0][0] = 0; mat[0][1] = 1; mat[0][2] = 1; mat[0][3] = 0;
+    mat[1][0] = 1; mat[1][1] = 1; mat[1][2] = 1; mat[1][3] = 1;
+    mat[2][0] = 1; mat[2][1] = 1; mat[2][2] = 1; mat[2][3] = 1;
+    mat[3][0] = 1; mat[3][1] = 1; mat[3][2] = 0; mat[3][3] = 0;
 
     int result = maxArea(n, m);
     cout << result;
