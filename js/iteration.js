@@ -59,6 +59,8 @@ function iterationBadgesHtml(markers, kind) {
           '<span class="structure-badge ' +
           (kind || "iter") +
           (i > 0 ? " iter-alt" : "") +
+          '" data-ptr="' +
+          escapeXml(m.varName) +
           '">' +
           escapeXml(m.varName) +
           "</span>"
@@ -404,7 +406,12 @@ function renderLiveStructures() {
       let cls = "structure-slot" + (isIter ? " active" : "");
       let badge = "";
       if (isIter && iterationInfo.varName) {
-        badge = '<span class="structure-badge iter">' + escapeXml(iterationInfo.varName) + "</span>";
+        badge =
+          '<span class="structure-badge iter" data-ptr="' +
+          escapeXml(iterationInfo.varName) +
+          '" data-ptr-anchor="center">' +
+          escapeXml(iterationInfo.varName) +
+          "</span>";
       } else if (isHead) {
         badge = '<span class="structure-badge head">' + escapeXml(list.name) + "</span>";
       }
@@ -486,7 +493,14 @@ function renderIterationOverlay() {
     let srcTag = "";
     if (markers.length) {
       badge = markers
-        .map((m) => '<span class="badge">' + escapeXml(m.varName) + "</span>")
+        .map(
+          (m) =>
+            '<span class="badge" data-ptr="' +
+            escapeXml(m.varName) +
+            '" data-ptr-anchor="center">' +
+            escapeXml(m.varName) +
+            "</span>"
+        )
         .join("");
     }
     if (i === 0 && iterationInfo.source && iterationInfo.source !== "(range)") {

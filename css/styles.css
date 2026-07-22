@@ -660,6 +660,14 @@
       border-radius: var(--radius-sm);
       z-index: 2;
     }
+    .overlay-slot .badge.ptr-sliding,
+    .structure-badge.ptr-sliding,
+    .ptr-marker.ptr-sliding {
+      transition: transform 0.38s cubic-bezier(0.22, 1, 0.36, 1);
+      z-index: 6;
+      will-change: transform;
+      pointer-events: none;
+    }
     .overlay-slot .badge::after {
       content: "";
       position: absolute;
@@ -757,14 +765,12 @@
       color: var(--value);
       font-size: 0.75rem;
       font-weight: 500;
-      transition: background 0.15s var(--ease), border-color 0.15s var(--ease);
+      transition: background 0.15s var(--ease), border-color 0.15s var(--ease), box-shadow 0.15s var(--ease), transform 0.15s var(--ease);
     }
     .structure-slot.updated .structure-cell {
       border-color: var(--pointer);
-      background: rgba(255, 183, 77, 0.12);
       color: var(--text);
-      transform: none;
-      box-shadow: none;
+      animation: cellUpdateFlash 0.7s var(--ease) both;
     }
     .structure-slot.active .structure-cell {
       border-color: var(--iter);
@@ -810,6 +816,9 @@
     .structure-badge.write {
       color: var(--on-accent);
       background: var(--pointer);
+      box-shadow: 0 0 0 0 rgba(255, 183, 77, 0.45);
+      animation: badgePop 0.55s cubic-bezier(0.34, 1.4, 0.64, 1) both,
+                 badgeGlow 1.2s ease-out 0.2s both;
     }
     .structure-badge.iter {
       color: #3d1028;
@@ -853,11 +862,89 @@
       border-radius: var(--radius-sm);
       background: rgba(128, 203, 196, 0.1);
       font-size: 0.6875rem;
+      transition: background 0.15s var(--ease), color 0.15s var(--ease), box-shadow 0.15s var(--ease), transform 0.15s var(--ease);
     }
     .inline-array-cell.hot {
-      background: rgba(255, 183, 77, 0.15);
       color: var(--text);
       font-weight: 500;
+      animation: cellUpdateFlash 0.7s var(--ease) both;
+    }
+    @keyframes cellUpdateFlash {
+      0% {
+        background: rgba(255, 183, 77, 0.55);
+        border-color: #ffcc80;
+        box-shadow: 0 0 0 0 rgba(255, 183, 77, 0.55), 0 0 18px rgba(255, 183, 77, 0.35);
+        transform: scale(1.12);
+      }
+      45% {
+        background: rgba(255, 183, 77, 0.28);
+        border-color: var(--pointer);
+        box-shadow: 0 0 0 4px rgba(255, 183, 77, 0.18), 0 0 12px rgba(255, 183, 77, 0.22);
+        transform: scale(1.04);
+      }
+      100% {
+        background: rgba(255, 183, 77, 0.14);
+        border-color: var(--pointer);
+        box-shadow: 0 0 0 0 rgba(255, 183, 77, 0), 0 0 6px rgba(255, 183, 77, 0.12);
+        transform: scale(1);
+      }
+    }
+    @keyframes badgePop {
+      0% {
+        opacity: 0;
+        transform: translateX(-50%) translateY(6px) scale(0.6);
+      }
+      70% {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0) scale(1.08);
+      }
+      100% {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0) scale(1);
+      }
+    }
+    .structure-badges .structure-badge.write {
+      animation: badgePopInline 0.55s cubic-bezier(0.34, 1.4, 0.64, 1) both,
+                 badgeGlow 1.2s ease-out 0.2s both;
+    }
+    @keyframes badgePopInline {
+      0% {
+        opacity: 0;
+        transform: translateY(6px) scale(0.6);
+      }
+      70% {
+        opacity: 1;
+        transform: translateY(0) scale(1.08);
+      }
+      100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+    @keyframes badgeGlow {
+      0% { box-shadow: 0 0 0 0 rgba(255, 183, 77, 0.5); }
+      70% { box-shadow: 0 0 0 6px rgba(255, 183, 77, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(255, 183, 77, 0); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .structure-slot.updated .structure-cell,
+      .inline-array-cell.hot,
+      .structure-badge.write,
+      .structure-badges .structure-badge.write {
+        animation: none;
+      }
+      .structure-slot.updated .structure-cell,
+      .inline-array-cell.hot {
+        background: rgba(255, 183, 77, 0.14);
+        border-color: var(--pointer);
+        box-shadow: none;
+        transform: none;
+      }
+      .overlay-slot .badge.ptr-sliding,
+      .structure-badge.ptr-sliding,
+      .ptr-marker.ptr-sliding {
+        transition: none !important;
+      }
     }
     .kind-pill {
       font-size: 0.65rem;

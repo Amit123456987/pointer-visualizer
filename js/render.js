@@ -218,12 +218,55 @@ function svgNodeRect(x, y, w, h, label, opts) {
   );
 }
 
-function svgEdge(x1, y1, x2, y2, label, hl) {
+function svgEdge(x1, y1, x2, y2, label, hl, edgeKey) {
   const stroke = hl ? "#f48fb1" : "#ffb74d";
   const marker = hl ? "url(#arrow-iter)" : "url(#arrow)";
+  const edgeAttr = edgeKey ? ' data-edge="' + escapeXml(edgeKey) + '"' : "";
   return (
-    '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" stroke="' + stroke + '" stroke-width="2" stroke-linecap="round" marker-end="' + marker + '"/>' +
-    (label ? '<text x="' + ((x1 + x2) / 2) + '" y="' + ((y1 + y2) / 2 - 6) + '" fill="#9e9e9e" font-size="10" font-family="Roboto Mono" text-anchor="middle">' + escapeXml(label) + "</text>" : "")
+    "<line" +
+    edgeAttr +
+    ' x1="' +
+    x1 +
+    '" y1="' +
+    y1 +
+    '" x2="' +
+    x2 +
+    '" y2="' +
+    y2 +
+    '" stroke="' +
+    stroke +
+    '" stroke-width="2" stroke-linecap="round" marker-end="' +
+    marker +
+    '"/>' +
+    (label
+      ? '<text x="' +
+        (x1 + x2) / 2 +
+        '" y="' +
+        ((y1 + y2) / 2 - 6) +
+        '" fill="#9e9e9e" font-size="10" font-family="Roboto Mono" text-anchor="middle">' +
+        escapeXml(label) +
+        "</text>"
+      : "")
+  );
+}
+
+function svgPtrBadge(x, y, name) {
+  return (
+    '<g class="ptr-marker" data-ptr="' +
+    escapeXml(name) +
+    '">' +
+    '<rect x="' +
+    (x - 28) +
+    '" y="' +
+    (y - 42) +
+    '" width="56" height="18" rx="8" fill="#f48fb1"/>' +
+    '<text x="' +
+    x +
+    '" y="' +
+    (y - 29) +
+    '" text-anchor="middle" fill="#3d1028" font-size="10" font-family="Roboto Mono" font-weight="500">' +
+    escapeXml(name) +
+    "</text></g>"
   );
 }
 
@@ -290,7 +333,7 @@ function renderTree(into) {
       const pa = pos.get(a), pb = pos.get(b);
       if (!pa || !pb) continue;
       const hl = iterationInfo && iterationInfo.current && (iterationInfo.current.id === a || iterationInfo.current.id === b);
-      parts.push(svgEdge(pa.x, pa.y + yOff + 16, pb.x, pb.y + yOff - 16, lab, hl));
+      parts.push(svgEdge(pa.x, pa.y + yOff + 16, pb.x, pb.y + yOff - 16, lab, hl, a + ":" + lab));
     }
     for (const [id, p] of pos) {
       const hl = iterationInfo && iterationInfo.current && iterationInfo.current.id === id;
@@ -301,11 +344,7 @@ function renderTree(into) {
         iterationInfo.items[0].id === id;
       parts.push(svgNodeRect(p.x, p.y + yOff, 56, 36, p.label, { highlight: hl, stroke: "#a8c7fa" }));
       if (hl && iterationInfo) {
-        parts.push(
-          '<rect x="'+(p.x-28)+'" y="'+(p.y+yOff-42)+'" width="56" height="18" rx="8" fill="#f48fb1"/>' +
-          '<text x="'+p.x+'" y="'+(p.y+yOff-29)+'" text-anchor="middle" fill="#3d1028" font-size="10" font-family="Roboto Mono" font-weight="500">'+
-          escapeXml(iterationInfo.varName)+"</text>"
-        );
+        parts.push(svgPtrBadge(p.x, p.y + yOff, iterationInfo.varName));
       } else if (isHead && iterationInfo && iterationInfo.source) {
         parts.push(
           '<text x="'+p.x+'" y="'+(p.y+yOff-28)+'" text-anchor="middle" fill="#a8c7fa" font-size="10" font-family="Roboto Mono" font-weight="500">'+
@@ -335,17 +374,13 @@ function renderTree(into) {
         );
       }
       if (hl && iterationInfo) {
-        parts.push(
-          '<rect x="'+(x-28)+'" y="'+(y-42)+'" width="56" height="18" rx="8" fill="#f48fb1"/>' +
-          '<text x="'+x+'" y="'+(y-29)+'" text-anchor="middle" fill="#3d1028" font-size="10" font-family="Roboto Mono" font-weight="500">'+
-          escapeXml(iterationInfo.varName)+"</text>"
-        );
+        parts.push(svgPtrBadge(x, y, iterationInfo.varName));
       }
       parts.push(svgNodeRect(x, y, 56, 36, dataLabel(o), { highlight: hl, stroke: hl ? "#f48fb1" : "#80cbc4" }));
       isFirst = false;
       const n = fieldPtr(o, ["next"]);
       if (n) {
-        parts.push(svgEdge(x + 28, y, x + 72, y, null, hl));
+        parts.push(svgEdge(x + 28, y, x + 72, y, null, hl, id + ":next"));
         x += 100;
         id = n;
       } else {
@@ -419,7 +454,7 @@ function renderGraph(into) {
     const sx = pa.x + (dx / len) * 26, sy = pa.y + (dy / len) * 26;
     const ex = pb.x - (dx / len) * 26, ey = pb.y - (dy / len) * 26;
     const hl = iterationInfo && iterationInfo.current && (a === iterationInfo.current.id || b === iterationInfo.current.id);
-    parts.push(svgEdge(sx, sy, ex, ey, lab, hl));
+    parts.push(svgEdge(sx, sy, ex, ey, lab, hl, a + ":" + lab));
   }
   for (const [k, meta] of nodes) {
     const p = pos.get(k);
@@ -442,11 +477,7 @@ function renderGraph(into) {
       '<text x="'+p.x+'" y="'+(p.y+4)+'" text-anchor="middle" fill="#e3e3e3" font-size="11" font-family="Roboto Mono" font-weight="500">'+escapeXml(label)+"</text>"
     );
     if (hl && iterationInfo) {
-      parts.push(
-        '<rect x="'+(p.x-30)+'" y="'+(p.y-46)+'" width="60" height="18" rx="8" fill="#f48fb1"/>' +
-        '<text x="'+p.x+'" y="'+(p.y-33)+'" text-anchor="middle" fill="#3d1028" font-size="10" font-family="Roboto Mono" font-weight="500">'+
-        escapeXml(iterationInfo.varName)+"</text>"
-      );
+      parts.push(svgPtrBadge(p.x, p.y, iterationInfo.varName));
     }
   }
 
@@ -463,11 +494,129 @@ function renderAll(into) {
   renderGraph(into.querySelector("#all-graph"));
 }
 
+function prefersReducedMotion() {
+  return (
+    typeof matchMedia === "function" &&
+    matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
+function capturePointerMotion() {
+  const ptrs = new Map();
+  document.querySelectorAll("[data-ptr]").forEach((el) => {
+    const key = el.getAttribute("data-ptr");
+    if (!key) return;
+    const r = el.getBoundingClientRect();
+    if (!r.width && !r.height) return;
+    if (!ptrs.has(key)) ptrs.set(key, []);
+    ptrs.get(key).push({ left: r.left, top: r.top });
+  });
+
+  const edges = new Map();
+  document.querySelectorAll("line[data-edge]").forEach((el) => {
+    const key = el.getAttribute("data-edge");
+    if (!key) return;
+    if (!edges.has(key)) edges.set(key, []);
+    edges.get(key).push({
+      x1: +el.getAttribute("x1"),
+      y1: +el.getAttribute("y1"),
+      x2: +el.getAttribute("x2"),
+      y2: +el.getAttribute("y2"),
+    });
+  });
+
+  return { ptrs, edges };
+}
+
+function easeOutCubic(t) {
+  return 1 - Math.pow(1 - t, 3);
+}
+
+function animatePointerSlides(prev) {
+  if (!prev || prefersReducedMotion()) return;
+
+  const run = () => {
+    document.querySelectorAll("[data-ptr]").forEach((el) => {
+      const key = el.getAttribute("data-ptr");
+      const queue = prev.ptrs && prev.ptrs.get(key);
+      if (!queue || !queue.length) return;
+      const old = queue.shift();
+      const r = el.getBoundingClientRect();
+      const dx = old.left - r.left;
+      const dy = old.top - r.top;
+      if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return;
+
+      const centered = el.getAttribute("data-ptr-anchor") === "center";
+      const from = centered
+        ? "translateX(calc(-50% + " + dx + "px)) translateY(" + dy + "px)"
+        : "translate(" + dx + "px, " + dy + "px)";
+      const to = centered ? "translateX(-50%)" : "translate(0px, 0px)";
+
+      el.style.transition = "none";
+      el.style.transform = from;
+      void el.getBoundingClientRect();
+      el.classList.add("ptr-sliding");
+      el.style.transition = "";
+      el.style.transform = to;
+
+      const cleanup = (ev) => {
+        if (ev && ev.propertyName && ev.propertyName !== "transform") return;
+        el.classList.remove("ptr-sliding");
+        el.style.transform = "";
+        el.style.transition = "";
+        el.removeEventListener("transitionend", cleanup);
+      };
+      el.addEventListener("transitionend", cleanup);
+      setTimeout(cleanup, 500);
+    });
+
+    if (!prev.edges || !prev.edges.size) return;
+    document.querySelectorAll("line[data-edge]").forEach((el) => {
+      const key = el.getAttribute("data-edge");
+      const queue = prev.edges.get(key);
+      if (!queue || !queue.length) return;
+      const from = queue.shift();
+      const to = {
+        x1: +el.getAttribute("x1"),
+        y1: +el.getAttribute("y1"),
+        x2: +el.getAttribute("x2"),
+        y2: +el.getAttribute("y2"),
+      };
+      const moved =
+        Math.hypot(to.x1 - from.x1, to.y1 - from.y1) > 0.5 ||
+        Math.hypot(to.x2 - from.x2, to.y2 - from.y2) > 0.5;
+      if (!moved) return;
+
+      el.setAttribute("x1", from.x1);
+      el.setAttribute("y1", from.y1);
+      el.setAttribute("x2", from.x2);
+      el.setAttribute("y2", from.y2);
+
+      const duration = 380;
+      const t0 = performance.now();
+      const tick = (now) => {
+        const t = Math.min(1, (now - t0) / duration);
+        const e = easeOutCubic(t);
+        el.setAttribute("x1", from.x1 + (to.x1 - from.x1) * e);
+        el.setAttribute("y1", from.y1 + (to.y1 - from.y1) * e);
+        el.setAttribute("x2", from.x2 + (to.x2 - from.x2) * e);
+        el.setAttribute("y2", from.y2 + (to.y2 - from.y2) * e);
+        if (t < 1) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+  };
+
+  requestAnimationFrame(() => requestAnimationFrame(run));
+}
+
 function refresh() {
+  const prev = capturePointerMotion();
   renderCodeHighlight();
   const tab = document.querySelector(".tab.active").dataset.tab;
   if (tab === "memory") renderMemory(document.getElementById("panel-memory"));
   if (tab === "tree") renderTree(document.getElementById("panel-tree"));
   if (tab === "graph") renderGraph(document.getElementById("panel-graph"));
   if (tab === "all") renderAll(document.getElementById("panel-all"));
+  animatePointerSlides(prev);
 }
