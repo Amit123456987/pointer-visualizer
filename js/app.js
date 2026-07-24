@@ -414,12 +414,26 @@ document.getElementById("btnReset").addEventListener("click", () => {
 
 document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => {
-    document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+    document.querySelectorAll(".tab").forEach((t) => {
+      t.classList.remove("active");
+      t.setAttribute("aria-selected", "false");
+    });
     document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
     tab.classList.add("active");
+    tab.setAttribute("aria-selected", "true");
     document.getElementById("panel-" + tab.dataset.tab).classList.add("active");
     refresh();
   });
+});
+
+document.querySelector(".stage").addEventListener("click", (e) => {
+  const btn = e.target.closest(".histogram-toggle");
+  if (!btn) return;
+  e.preventDefault();
+  const key = btn.getAttribute("data-hist-key");
+  if (!key || typeof toggleHistogramMode !== "function") return;
+  toggleHistogramMode(key);
+  refresh();
 });
 
 codeEl.addEventListener("keydown", (e) => {

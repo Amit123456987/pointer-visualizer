@@ -705,9 +705,43 @@ function renderGraph(into) {
     '<div class="viz-wrap"><svg class="viz" viewBox="0 0 660 520">' + svgDefs() + parts.join("") + "</svg></div>";
 }
 
+function renderHistograms(into) {
+  const arrays = typeof collectAllArrays === "function" ? collectAllArrays() : [];
+  const intArrays = arrays.filter((a) => a.ints && a.ints.length && !a.matrix);
+
+  if (!intArrays.length) {
+    into.innerHTML = emptyStateHtml(
+      "No integer arrays in scope yet. Declare an <code>int</code> array and Step/Run — then it appears here as a histogram."
+    );
+    return;
+  }
+
+  let html =
+    '<div class="legend"><span class="l-val">Bar height = value</span><span class="l-ptr">Updated cell</span><span class="l-iter">Iterator index</span></div>' +
+    '<div class="structures-live histograms-panel">' +
+    '<div class="box-title">Integer array histograms</div>' +
+    '<p class="structures-hint">Each bar is one cell — height scales to the largest absolute value in that array</p>';
+
+  for (const arr of intArrays) {
+    html +=
+      '<div class="structure-card array-card histogram-mode">' +
+      '<div class="structure-head"><span class="structure-name">' + escapeXml(arr.label) + "</span>" +
+      '<span class="structure-meta">' + arr.ints.length + " bars · max " +
+      Math.max.apply(null, arr.ints.map(Math.abs)) +
+      "</span></div>" +
+      renderArrayHistogram(arr) +
+      "</div>";
+  }
+
+  html += "</div>";
+  into.innerHTML = html;
+}
+
 function renderAll(into) {
-  into.innerHTML = '<div style="display:grid;gap:1rem"><div id="all-mem"></div><div id="all-tree"></div><div id="all-graph"></div></div>';
+  into.innerHTML =
+    '<div style="display:grid;gap:1rem"><div id="all-mem"></div><div id="all-hist"></div><div id="all-tree"></div><div id="all-graph"></div></div>';
   renderMemory(into.querySelector("#all-mem"));
+  renderHistograms(into.querySelector("#all-hist"));
   renderTree(into.querySelector("#all-tree"));
   renderGraph(into.querySelector("#all-graph"));
 }
@@ -845,6 +879,7 @@ function refresh() {
   renderCodeHighlight();
   const tab = document.querySelector(".tab.active").dataset.tab;
   if (tab === "memory") renderMemory(document.getElementById("panel-memory"));
+  if (tab === "histogram") renderHistograms(document.getElementById("panel-histogram"));
   if (tab === "tree") renderTree(document.getElementById("panel-tree"));
   if (tab === "graph") renderGraph(document.getElementById("panel-graph"));
   if (tab === "all") renderAll(document.getElementById("panel-all"));

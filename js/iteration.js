@@ -444,6 +444,18 @@ function trackLoopIteration(st) {
   } catch (_) {}
 }
 
+/** Prefer integer arrays for histogram mode; returns null if any cell is non-integer. */
+function arrayIntegerValues(val) {
+  if (!val || val.k !== "arr" || !val.items.length) return null;
+  const nums = [];
+  for (const it of val.items) {
+    if (!it || it.k !== "prim" || typeof it.v !== "number" || !Number.isFinite(it.v)) return null;
+    if (!Number.isInteger(it.v)) return null;
+    nums.push(it.v);
+  }
+  return nums;
+}
+
 function collectAllArrays() {
   const out = [];
   const seen = new Set();
@@ -455,15 +467,22 @@ function collectAllArrays() {
     seen.add(key);
     const label = frame === "<global>" ? name + " (global)" : frame === "main" ? name : name + " · " + frame;
     const matrix = typeof isMatrixValue === "function" && isMatrixValue(val);
+    const ints = matrix ? null : arrayIntegerValues(val);
     out.push({
       name,
       frame,
       label,
+      key,
+      ints,
       arr: val,
       matrix,
       items: matrix
         ? null
-        : val.items.map((it, i) => ({ display: describe(it), index: i })),
+        : val.items.map((it, i) => ({
+            display: describe(it),
+            index: i,
+            value: it && it.k === "prim" ? it.v : null,
+          })),
       rows: matrix
         ? val.items.map((row, r) => ({
             arr: row,
@@ -480,6 +499,70 @@ function collectAllArrays() {
     for (const [name, val] of globals) add(name, "<global>", val);
   }
   return out.sort((a, b) => a.label.localeCompare(b.label));
+}
+
+/** Keys (frame::name) currently shown as histograms in the Memory live panel. */
+let histogramModeKeys = new Set();
+
+function isHistogramMode(key) {
+  return histogramModeKeys.has(key);
+}
+
+function toggleHistogramMode(key) {
+  if (histogramModeKeys.has(key)) histogramModeKeys.delete(key);
+  else histogramModeKeys.add(key);
+}
+
+function renderArrayHistogram(arr) {
+  const ints = arr.ints;
+  if (!ints || !ints.length) {
+    return (
+      '<p class="histogram-empty">Not an integer array — histogram needs every cell to be an int.</p>'
+    );
+  }
+
+  const maxAbs = Math.max.apply(null, ints.map(Math.abs).concat([1]));
+  const hasNeg = ints.some((v) => v < 0);
+
+  const bars = ints.map((v, i) => {
+    const markers = arrayIteratorsFor(arr.name, ints.length).filter((m) => m.index === i);
+    const isWrite =
+      lastArrayWrite &&
+      lastArrayWrite.name === arr.name &&
+      lastArrayWrite.index === i &&
+      lastArrayWrite.frame === arr.frame;
+    let cls = "histogram-bar-wrap";
+    if (isWrite) cls += " updated";
+    if (markers.length) cls += " active";
+
+    const pct = Math.max(4, Math.round((Math.abs(v) / maxAbs) * 100));
+    const barCls = "histogram-bar" + (v < 0 ? " neg" : "") + (v === 0 ? " zero" : "");
+
+    let badge = "";
+    if (isWrite) badge = '<span class="structure-badge write">updated</span>';
+    else if (markers.length) badge = iterationBadgesHtml(markers);
+
+    return (
+      '<div class="' + cls + '" title="' + escapeXml(arr.name + "[" + i + "] = " + v) + '">' +
+      badge +
+      '<div class="histogram-col' + (hasNeg ? " bipolar" : "") + '">' +
+      (hasNeg
+        ? '<div class="histogram-pos-slot">' +
+          (v > 0 ? '<div class="' + barCls + '" style="height:' + pct + '%"></div>' : "") +
+          "</div>" +
+          '<div class="histogram-baseline"></div>' +
+          '<div class="histogram-neg-slot">' +
+          (v < 0 ? '<div class="' + barCls + '" style="height:' + pct + '%"></div>' : "") +
+          "</div>"
+        : '<div class="histogram-pos-slot full">' +
+          '<div class="' + barCls + '" style="height:' + pct + '%"></div></div>') +
+      "</div>" +
+      '<div class="histogram-value">' + escapeXml(String(v)) + "</div>" +
+      '<span class="structure-idx">[' + i + "]</span></div>"
+    );
+  });
+
+  return '<div class="histogram-track">' + bars.join("") + "</div>";
 }
 
 function collectAllLinkedLists() {
@@ -624,45 +707,77 @@ function renderLiveStructures() {
       continue;
     }
 
-    const slots = arr.items.map((it, i) => {
-      const markers = arrayIteratorsFor(arr.name, arr.items.length).filter((m) => m.index === i);
-      const isWrite =
-        typeof isLastArrayWrite === "function"
-          ? isLastArrayWrite(arr.arr, i, arr.name, arr.frame)
-          : lastArrayWrite &&
-            lastArrayWrite.name === arr.name &&
-            lastArrayWrite.index === i &&
-            lastArrayWrite.frame === arr.frame;
-      if (isWrite) hasWrite = true;
-      let cls = "structure-slot";
-      if (isWrite) cls += " updated";
-      if (markers.length) cls += " active";
+    const canHist = !!(arr.ints && arr.ints.length);
+    const showHist = canHist && isHistogramMode(arr.key);
 
-      let badge = "";
-      if (isWrite) {
-        badge =
-          '<span class="structure-badge write" data-ptr-anchor="center">[' +
-          i +
-          "] updated</span>";
-      } else if (markers.length) {
-        badge = iterationBadgesHtml(markers);
+    let body;
+    if (showHist) {
+      body = renderArrayHistogram(arr);
+      if (
+        lastArrayWrite &&
+        lastArrayWrite.name === arr.name &&
+        lastArrayWrite.frame === arr.frame
+      ) {
+        hasWrite = true;
       }
+    } else {
+      const slots = arr.items.map((it, i) => {
+        const markers = arrayIteratorsFor(arr.name, arr.items.length).filter((m) => m.index === i);
+        const isWrite =
+          typeof isLastArrayWrite === "function"
+            ? isLastArrayWrite(arr.arr, i, arr.name, arr.frame)
+            : lastArrayWrite &&
+              lastArrayWrite.name === arr.name &&
+              lastArrayWrite.index === i &&
+              lastArrayWrite.frame === arr.frame;
+        if (isWrite) hasWrite = true;
+        let cls = "structure-slot";
+        if (isWrite) cls += " updated";
+        if (markers.length) cls += " active";
 
-      return (
-        '<div class="' + cls + '"' + (isWrite ? ' data-arr-write="1"' : "") + ">" +
-        badge +
-        '<div class="structure-cell">' + escapeXml(it.display) + "</div>" +
-        '<span class="structure-idx' + (isWrite ? " idx-updated" : "") + '">[' + i + "]</span></div>"
-      );
-    });
+        let badge = "";
+        if (isWrite) {
+          badge =
+            '<span class="structure-badge write" data-ptr-anchor="center">[' +
+            i +
+            "] updated</span>";
+        } else if (markers.length) {
+          badge = iterationBadgesHtml(markers);
+        }
+
+        return (
+          '<div class="' + cls + '"' + (isWrite ? ' data-arr-write="1"' : "") + ">" +
+          badge +
+          '<div class="structure-cell">' + escapeXml(it.display) + "</div>" +
+          '<span class="structure-idx' + (isWrite ? " idx-updated" : "") + '">[' + i + "]</span></div>"
+        );
+      });
+      body = '<div class="structure-track array-track">' + slots.join("") + "</div>";
+    }
+
+    const toggleBtn = canHist
+      ? '<button type="button" class="histogram-toggle' + (showHist ? " on" : "") +
+        '" data-hist-key="' + escapeXml(arr.key) + '" title="Toggle histogram view">' +
+        (showHist ? "Cells" : "Histogram") +
+        "</button>"
+      : "";
 
     html +=
-      '<div class="structure-card array-card' + (hasWrite ? " has-write" : "") + '">' +
+      '<div class="structure-card array-card' +
+      (hasWrite ? " has-write" : "") +
+      (showHist ? " histogram-mode" : "") +
+      '">' +
       '<div class="structure-head"><span class="structure-name">' + escapeXml(arr.label) + "</span>" +
+      '<span class="structure-head-actions">' +
       '<span class="structure-meta">' +
       (hasWrite ? "wrote [" + lastArrayWrite.index + "] · " : "") +
-      arr.items.length + " cells</span></div>" +
-      '<div class="structure-track array-track">' + slots.join("") + "</div></div>";
+      arr.items.length + " cells" +
+      (canHist ? " · int" : "") +
+      "</span>" +
+      toggleBtn +
+      "</span></div>" +
+      body +
+      "</div>";
   }
 
   for (const list of lists) {
